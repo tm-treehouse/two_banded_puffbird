@@ -137,7 +137,7 @@ env.bak/
 venv.bak/
 
 # Logs
-logs
+/logs
 *.log
 *.out
 *.err
