@@ -16,9 +16,7 @@ def get_treasury_yield():
 
     # Extract the most recent date and yield
     latest_entry = root.findall(".//entry")[-1]
-    date = latest_entry.find(".//td[@class='date']").text
     yield_10y = latest_entry.find(".//td[@class='GS10']").text
-    print_
     return float(yield_10y)
 
 """
