@@ -26,15 +26,64 @@ uv run src/python/analysis.py
 """
 
 import datetime as dt
+import logging
 import xml.etree.ElementTree as ET
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
+from rich.console import Console
+from rich.logging import RichHandler
 from scipy.stats import norm
 
 pd.options.mode.chained_assignment = None  # default='warn'
+
+# Initialize logger
+logger = logging.getLogger("options_analysis")
+
+
+def setup_logging(
+    log_level=logging.INFO, log_file="options_analysis.log", max_file_size_mb=1, backup_count=3
+):
+    """
+    Configure logging with both file and console handlers.
+
+    Parameters:
+        log_level (int): Logging level (default: logging.INFO)
+        log_file (str): Path to log file
+        max_file_size_mb (int): Maximum log file size in MB before rotating
+        backup_count (int): Number of backup logs to keep
+    """
+    # Create logs directory if it doesn't exist
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    log_file_path = log_dir / log_file
+
+    # Configure logger
+    logger.setLevel(log_level)
+
+    # Clear existing handlers if any
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    # File handler - rotating log files
+    file_handler = RotatingFileHandler(
+        log_file_path, maxBytes=max_file_size_mb * 1024 * 1024, backupCount=backup_count
+    )
+    file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(file_formatter)
+    logger.addHandler(file_handler)
+
+    # Rich console handler
+    console_handler = RichHandler(console=Console())
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(console_handler)
+
+    logger.info(f"Logging configured. Log file: {log_file_path}")
+    return logger
 
 
 def get_treasury_yield():
@@ -50,9 +99,8 @@ def get_treasury_yield():
 
     # Extract the most recent date and yield
     latest_entry = root.findall(".//entry")[-1]
-    # date = latest_entry.find(".//td[@class='date']").text # Unused
     yield_10y = latest_entry.find(".//td[@class='GS10']").text
-    print(yield_10y)  # Added print statement to display yield
+    logger.info(f"Current 10y Treasury yield: {yield_10y}")
     return float(yield_10y)
 
 
@@ -89,12 +137,12 @@ def bs_call_delta(S, K, T, r, sigma):
         float: Call delta (between 0 and 1)
     """
     # if T <= 0 | sigma <= 0 | S <= 0 | K <= 0:
-    #    print("Error")
+    #    logger.error("Invalid parameters for bs_call_delta")
     #    return np.nan  # invalid parameters
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     call_delta = norm.cdf(d1)
-    print(call_delta)
+    logger.debug(f"Call delta: {call_delta}")
     return call_delta
 
 
@@ -110,32 +158,41 @@ def main():
     5. Filters options based on risk-adjusted score and delta thresholds
     6. Exports results to CSV files
     """
+    # Setup logging
+    setup_logging()
+    logger.info("Starting options analysis")
+
     # TODO
     # risk_free_rate = get_treasury_yield
     risk_free_rate = 0.045
+    logger.info(f"Using risk-free rate: {risk_free_rate}")
     today = dt.datetime.today()
 
     # Parameters for AAPL (Example)
     ticker = "AAPL"
     percentage_range = 10
+    logger.info(f"Analyzing ticker: {ticker} with {percentage_range}% range")
 
     # Filter puts and calls by minimum risk-adjusted score threshold
     min_risk_score = 0.04
-
     delta_threshold = 0.50
 
     # Fetch the ticker data
+    logger.info(f"Fetching data for {ticker}")
     stock = yf.Ticker(ticker)
 
     # Get current stock price
     current_price = stock.history(period="1d")["Close"].iloc[-1]
+    logger.info(f"Current price for {ticker}: ${current_price:.2f}")
 
     # Get available option expiration dates
     expiration_dates = stock.options
+    logger.debug(f"Available expiration dates: {expiration_dates}")
 
     # Price bounds for filtering
     put_lower_bound = current_price * (1 - percentage_range / 100)
     call_upper_bound = current_price * (1 + percentage_range / 100)
+    logger.info(f"Price bounds - Put lower: ${put_lower_bound:.2f}, Call upper: ${call_upper_bound:.2f}")
 
     # Limit to a few near-term expirations for speed (e.g., first 5)
     expiration_dates = expiration_dates[:5]
@@ -144,10 +201,11 @@ def main():
     all_put_data = []
     all_call_data = []
 
-    print(expiration_dates)
+    logger.info(f"Analyzing {len(expiration_dates)} expiration dates: {expiration_dates}")
 
     for exp_date in expiration_dates:
         try:
+            logger.info(f"Processing options for expiration: {exp_date}")
             # Fetch the option chain
             options = stock.option_chain(exp_date)
             calls = options.calls.copy()
@@ -160,7 +218,7 @@ def main():
             otm_puts = puts[(puts["strike"] < current_price) & (puts["strike"] >= put_lower_bound)]
             otm_calls = calls[(calls["strike"] > current_price) & (calls["strike"] <= call_upper_bound)]
 
-            print(otm_puts)
+            logger.debug(f"Found {len(otm_puts)} OTM puts and {len(otm_calls)} OTM calls for {exp_date}")
 
             # Add expiration info
             otm_puts["expiration"] = exp_date
@@ -251,15 +309,10 @@ def main():
             all_put_data.append(otm_puts[put_columns])
             all_call_data.append(otm_calls[call_columns])
 
-        ##
-        ##        # Append to combined data
-        ##        all_put_data.append(otm_puts[['strike', 'midpoint', 'expiration']])
-        ##        all_call_data.append(otm_calls[['strike', 'midpoint', 'expiration']])
-        ##
         except Exception as e:
-            print(f"Error fetching data for {exp_date}: {e}")
-    ##
-    ### Combine into DataFrames
+            logger.error(f"Error fetching data for {exp_date}: {e}", exc_info=True)
+
+    # Combine into DataFrames
     put_df = pd.concat(all_put_data, ignore_index=True)
     call_df = pd.concat(all_call_data, ignore_index=True)
 
@@ -268,17 +321,10 @@ def main():
 
     filtered_call_df = call_df[call_df["risk_adjusted_score"] >= min_risk_score].reset_index(drop=True)
 
-    ##
-    ### Optional: display a preview
-    ##print("Put Options Data:")
-    ##print(put_df.head())
-    ##
-    ##print("\nCall Options Data:")
-    ##print(call_df.head())
-    ##
-    ### Optional: export to CSV
-    filtered_put_df.to_csv("otm_puts.csv", index=False)
-    ### call_df.to_csv('otm_calls.csv', index=False)
+    # Export to CSV
+    output_file = "otm_puts.csv"
+    filtered_put_df.to_csv(output_file, index=False)
+    logger.info(f"Exported {len(filtered_put_df)} filtered put options to {output_file}")
 
 
 if __name__ == "__main__":
