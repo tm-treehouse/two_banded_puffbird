@@ -10,16 +10,16 @@ import matplotlib.pyplot as plt
 import datetime as dt
 
 def get_treasury_yield():
-    # url = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=all&page=0"
-    # response = requests.get(url)
-    # root = ET.fromstring(response.content)
+    url = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=all&page=0"
+    response = requests.get(url)
+    root = ET.fromstring(response.content)
 
-    # # Extract the most recent date and yield
-    # latest_entry = root.findall(".//entry")[-1]
-    # date = latest_entry.find(".//td[@class='date']").text
-    # yield_10y = latest_entry.find(".//td[@class='GS10']").text
-    # #float(yield_10y)
-    return 0.045
+    # Extract the most recent date and yield
+    latest_entry = root.findall(".//entry")[-1]
+    date = latest_entry.find(".//td[@class='date']").text
+    yield_10y = latest_entry.find(".//td[@class='GS10']").text
+    print_
+    return float(yield_10y)
 
 """
 Black-Scholes delta for European call options.
@@ -44,11 +44,14 @@ def bs_call_delta(S, K, T, r, sigma):
     #    return np.nan  # invalid parameters
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
-    return norm.cdf(d1)
+    call_delta = norm.cdf(d1)
+    print(call_delta)
+    return call_delta
 
 
-
-risk_free_rate = 0.045 #get_treasury_yield
+#TODO
+#risk_free_rate = get_treasury_yield
+risk_free_rate = 0.045
 today = dt.datetime.today()
 
 
@@ -58,6 +61,8 @@ percentage_range = 10
 
 # Filter puts and calls by minimum risk-adjusted score threshold
 min_risk_score = 0.04
+
+delta_threshold = 0.50
 
 # Fetch the ticker data
 stock = yf.Ticker(ticker)
@@ -141,13 +146,15 @@ for exp_date in expiration_dates:
 
         otm_calls['days_to_exp'] = (pd.to_datetime(otm_calls['expiration']) - today).dt.days
         otm_calls['T'] = otm_calls['days_to_exp'] / 365  # time in years
-        otm_calls['delta'] = bs_call_delta(
-            S=current_price,
-            K=otm_puts['strike'],
-            T=otm_puts['T'],
-            r=risk_free_rate,
-            sigma=otm_calls['implied_volatility'] / 100
-        )
+        otm_calls['delta'] = 0
+        #Unused
+        #bs_call_delta(
+        #    S=current_price,
+        #    K=otm_puts['strike'],
+        #    T=otm_puts['T'],
+        #    r=risk_free_rate,
+        #    sigma=otm_calls['implied_volatility'] / 100
+        #)
 
         # Keep relevant columns
         put_columns = ['strike', 'expiration', 'midpoint', 'premium_collected', 'capital_required', 'return_on_capital_%', 'implied_volatility', 'risk_adjusted_score', 'delta', 'return_on_capital_per_anum_%']
@@ -170,6 +177,8 @@ put_df = pd.concat(all_put_data, ignore_index=True)
 call_df = pd.concat(all_call_data, ignore_index=True)
 
 filtered_put_df = put_df[put_df['risk_adjusted_score'] >= min_risk_score].reset_index(drop=True)
+filtered_put_df = put_df[put_df['delta'] >= -delta_threshold].reset_index(drop=True)
+
 filtered_call_df = call_df[call_df['risk_adjusted_score'] >= min_risk_score].reset_index(drop=True)
 
 
