@@ -1,4 +1,26 @@
 #!/root/venv/bin/python3
+"""
+----------------------------------------------------
+Title:      analysis.py
+License:    agpl-3.0
+Author:     TM, SC
+Created on: 2025-05-06
+----------------------------------------------------
+
+Description:
+
+----------------------------------------------------
+
+Arguments:
+None (ATM)
+
+----------------------------------------------------
+How to run this script:
+cd two_banded_puffbird
+uv run src/python/analysis.py
+----------------------------------------------------
+"""
+
 import datetime as dt
 import xml.etree.ElementTree as ET
 
