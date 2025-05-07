@@ -8,6 +8,10 @@ Created on: 2025-05-06
 ----------------------------------------------------
 
 Description:
+Financial options analysis tool that calculates risk-adjusted returns
+for put and call options based on current market data. The script
+fetches stock prices, treasury yields, and option chains, then applies
+Black-Scholes modeling to identify potentially favorable option trades.
 
 ----------------------------------------------------
 
@@ -34,6 +38,12 @@ pd.options.mode.chained_assignment = None  # default='warn'
 
 
 def get_treasury_yield():
+    """
+    Fetch the latest 10-year Treasury yield from the US Treasury website.
+
+    Returns:
+        float: The current 10-year Treasury yield as a decimal (e.g., 0.045 for 4.5%)
+    """
     url = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=all&page=0"
     response = requests.get(url)
     root = ET.fromstring(response.content)
@@ -46,27 +56,38 @@ def get_treasury_yield():
     return float(yield_10y)
 
 
-"""
-Black-Scholes delta for European call options.
-
-Parameters:
-S     : Current stock price
-K     : Strike price
-T     : Time to expiration (in years)
-r     : Risk-free rate (as decimal, e.g., 0.045 for 4.5%)
-sigma : Implied volatility (as decimal, e.g., 0.25 for 25%)
-
-Returns:
-float : Call delta (between 0 and 1)
-"""
-
-
 def bs_put_delta(S, K, T, r, sigma):
+    """
+    Calculate Black-Scholes delta for European put options.
+
+    Parameters:
+        S (float): Current stock price
+        K (float): Strike price
+        T (float): Time to expiration (in years)
+        r (float): Risk-free rate (as decimal, e.g., 0.045 for 4.5%)
+        sigma (float): Implied volatility (as decimal, e.g., 0.25 for 25%)
+
+    Returns:
+        float: Put delta (between -1 and 0)
+    """
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     return norm.cdf(d1) - 1
 
 
 def bs_call_delta(S, K, T, r, sigma):
+    """
+    Calculate Black-Scholes delta for European call options.
+
+    Parameters:
+        S (float): Current stock price
+        K (float): Strike price
+        T (float): Time to expiration (in years)
+        r (float): Risk-free rate (as decimal, e.g., 0.045 for 4.5%)
+        sigma (float): Implied volatility (as decimal, e.g., 0.25 for 25%)
+
+    Returns:
+        float: Call delta (between 0 and 1)
+    """
     # if T <= 0 | sigma <= 0 | S <= 0 | K <= 0:
     #    print("Error")
     #    return np.nan  # invalid parameters
@@ -78,6 +99,17 @@ def bs_call_delta(S, K, T, r, sigma):
 
 
 def main():
+    """
+    Main function that executes the option analysis workflow.
+
+    Process:
+    1. Fetches current treasury yield for risk-free rate
+    2. Gets stock price data for the specified ticker
+    3. Analyzes option chains for multiple expiration dates
+    4. Calculates metrics including return on capital and risk-adjusted scores
+    5. Filters options based on risk-adjusted score and delta thresholds
+    6. Exports results to CSV files
+    """
     # TODO
     # risk_free_rate = get_treasury_yield
     risk_free_rate = 0.045
