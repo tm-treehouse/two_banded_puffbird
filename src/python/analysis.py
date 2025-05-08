@@ -146,6 +146,44 @@ def bs_call_delta(S, K, T, r, sigma):
     return call_delta
 
 
+def assign_composite_score(filtered_df):
+    """
+    Assign a composite score based on normalized values of key metrics.
+    Only normalize within the filtered DataFrame to ensure relevance.
+    """
+    def normalize(series):
+        min_val = series.min()
+        max_val = series.max()
+        if min_val == max_val:
+            return pd.Series([1] * len(series), index=series.index)  # All same values
+        return (series - min_val) / (max_val - min_val)
+
+    df = filtered_df.copy()
+
+    # Normalize key metrics (within filtered subset only)
+    df['normalized_delta'] = normalize(df['delta'].abs())  # closer to 0 is better
+    df['normalized_premium'] = normalize(df['premium_collected'])
+    df['normalized_roc'] = normalize(df['return_on_capital_%'])
+    df['normalized_iv'] = 1 - normalize(df['implied_volatility'])  # inverted
+    #df['normalized_breakeven_margin'] = normalize(df['breakeven_margin_%'])
+
+    # Composite score with adjustable weights
+    df['composite_score'] = (
+        0.2 * df['normalized_delta'] +
+        0.3 * df['normalized_premium'] +
+        0.2 * df['normalized_roc'] +
+        0.15 * df['normalized_iv']
+    #    0.15 * df['normalized_breakeven_margin']
+    )
+
+    return df
+
+
+
+
+
+
+
 def main():
     """
     Main function that executes the option analysis workflow.
@@ -169,161 +207,190 @@ def main():
     today = dt.datetime.today()
 
     # Parameters for AAPL (Example)
-    ticker = "AAPL"
+    tickers = ['AAPL', 'MSFT', 'AMD', 'TSLA']
     percentage_range = 10
-    logger.info(f"Analyzing ticker: {ticker} with {percentage_range}% range")
+    #logger.info(f"Analyzing ticker: {ticker} with {percentage_range}% range")
 
     # Filter puts and calls by minimum risk-adjusted score threshold
     min_risk_score = 0.04
-    delta_threshold = 0.50
+    max_delta_threshold = 0.75
+    min_delta_threshold = 0.30
 
-    # Fetch the ticker data
-    logger.info(f"Fetching data for {ticker}")
-    stock = yf.Ticker(ticker)
-
-    # Get current stock price
-    current_price = stock.history(period="1d")["Close"].iloc[-1]
-    logger.info(f"Current price for {ticker}: ${current_price:.2f}")
-
-    # Get available option expiration dates
-    expiration_dates = stock.options
-    logger.debug(f"Available expiration dates: {expiration_dates}")
-
-    # Price bounds for filtering
-    put_lower_bound = current_price * (1 - percentage_range / 100)
-    call_upper_bound = current_price * (1 + percentage_range / 100)
-    logger.info(f"Price bounds - Put lower: ${put_lower_bound:.2f}, Call upper: ${call_upper_bound:.2f}")
-
-    # Limit to a few near-term expirations for speed (e.g., first 5)
-    expiration_dates = expiration_dates[:5]
 
     # Store premiums for plotting
     all_put_data = []
     all_call_data = []
 
-    logger.info(f"Analyzing {len(expiration_dates)} expiration dates: {expiration_dates}")
+    for ticker in tickers:
+       # Fetch the ticker data
+       logger.info(f"Fetching data for {ticker}")
+       stock = yf.Ticker(ticker)
 
-    for exp_date in expiration_dates:
-        try:
-            logger.info(f"Processing options for expiration: {exp_date}")
-            # Fetch the option chain
-            options = stock.option_chain(exp_date)
-            calls = options.calls.copy()
-            puts = options.puts.copy()
-            # Calculate midpoint premiums
-            calls["midpoint"] = (calls["bid"] + calls["ask"]) / 2
-            puts["midpoint"] = (puts["bid"] + puts["ask"]) / 2
+       # Get current stock price
+       current_price = stock.history(period="1d")["Close"].iloc[-1]
+       logger.info(f"Current price for {ticker}: ${current_price:.2f}")
 
-            # Filter for OTM and within percentage range
-            otm_puts = puts[(puts["strike"] < current_price) & (puts["strike"] >= put_lower_bound)]
-            otm_calls = calls[(calls["strike"] > current_price) & (calls["strike"] <= call_upper_bound)]
+       # Get available option expiration dates
+       expiration_dates = stock.options
 
-            logger.debug(f"Found {len(otm_puts)} OTM puts and {len(otm_calls)} OTM calls for {exp_date}")
+       logger.info(f"Analyzing {len(expiration_dates)} expiration dates: {expiration_dates}")
+       # Price bounds for filtering
+       put_lower_bound = current_price * (1 - percentage_range / 100)
+       call_upper_bound = current_price * (1 + percentage_range / 100)
+       logger.info(f"Price bounds - Put lower: ${put_lower_bound:.2f}, Call upper: ${call_upper_bound:.2f}")
 
-            # Add expiration info
-            otm_puts["expiration"] = exp_date
-            otm_calls["expiration"] = exp_date
+       # Limit to a few near-term expirations for speed (e.g., first 5)
+       expiration_dates = expiration_dates[:5]
+       logger.debug(f"Available expiration dates: {expiration_dates}")
+       for exp_date in expiration_dates:
+           try:
+               logger.info(f"Processing options for expiration: {exp_date}")
+               # Fetch the option chain
+               options = stock.option_chain(exp_date)
+               calls = options.calls.copy()
+               puts = options.puts.copy()
 
-            # Calculate premium and return on capital
-            otm_puts["premium_collected"] = otm_puts["midpoint"] * 100
-            otm_calls["premium_collected"] = otm_calls["midpoint"] * 100
+               puts = puts[
+                   (puts['volume'] > 0) &
+                   (puts['openInterest'] >= 100)
+               ]
 
-            otm_puts["capital_required"] = otm_puts["strike"] * 100
-            otm_calls["capital_required"] = otm_calls["strike"] * 100
+               calls = calls[
+                   (calls['volume'] > 0) &
+                   (calls['openInterest'] >= 100)
+               ]
 
-            otm_puts["return_on_capital_%"] = (
-                otm_puts["premium_collected"] / otm_puts["capital_required"]
-            ) * 100
-            otm_calls["return_on_capital_%"] = (
-                otm_calls["premium_collected"] / otm_calls["capital_required"]
-            ) * 100
 
-            days_to_expiration = (pd.to_datetime(exp_date) - pd.Timestamp.today()).days
+               # Calculate midpoint premiums
+               calls["midpoint"] = (calls["bid"] + calls["ask"]) / 2
+               puts["midpoint"] = (puts["bid"] + puts["ask"]) / 2
 
-            otm_puts["return_on_capital_per_anum_%"] = (
-                otm_puts["return_on_capital_%"] / days_to_expiration
-            ) * 365
-            otm_calls["return_on_capital_per_anum_%"] = (
-                otm_calls["return_on_capital_%"] / days_to_expiration
-            ) * 365
 
-            # Include IV
-            otm_puts["implied_volatility"] = otm_puts["impliedVolatility"] * 100  # Convert to %
-            otm_calls["implied_volatility"] = otm_calls["impliedVolatility"] * 100
 
-            # Calculate risk-adjusted score (ROC / IV)
-            otm_puts["risk_adjusted_score"] = otm_puts["return_on_capital_%"] / otm_puts["implied_volatility"]
-            otm_calls["risk_adjusted_score"] = (
-                otm_calls["return_on_capital_%"] / otm_calls["implied_volatility"]
-            )
+               # Filter for OTM and within percentage range
+               otm_puts = puts[(puts["strike"] < current_price) & (puts["strike"] >= put_lower_bound)]
+               otm_calls = calls[(calls["strike"] > current_price) & (calls["strike"] <= call_upper_bound)]
 
-            # For puts
-            otm_puts["days_to_exp"] = (pd.to_datetime(otm_puts["expiration"]) - today).dt.days
-            otm_puts["T"] = otm_puts["days_to_exp"] / 365  # time in years
-            otm_puts["delta"] = bs_put_delta(
-                S=current_price,
-                K=otm_puts["strike"],
-                T=otm_puts["T"],
-                r=risk_free_rate,
-                sigma=otm_puts["implied_volatility"] / 100,
-            )
+               logger.debug(f"Found {len(otm_puts)} OTM puts and {len(otm_calls)} OTM calls for {exp_date}")
 
-            otm_calls["days_to_exp"] = (pd.to_datetime(otm_calls["expiration"]) - today).dt.days
-            otm_calls["T"] = otm_calls["days_to_exp"] / 365  # time in years
-            otm_calls["delta"] = 0
-            # Unused
-            # bs_call_delta(
-            #    S=current_price,
-            #    K=otm_puts['strike'],
-            #    T=otm_puts['T'],
-            #    r=risk_free_rate,
-            #    sigma=otm_calls['implied_volatility'] / 100
-            # )
+               # Add expiration info
+               otm_puts["expiration"] = exp_date
+               otm_calls["expiration"] = exp_date
 
-            # Keep relevant columns
-            put_columns = [
-                "strike",
-                "expiration",
-                "midpoint",
-                "premium_collected",
-                "capital_required",
-                "return_on_capital_%",
-                "implied_volatility",
-                "risk_adjusted_score",
-                "delta",
-                "return_on_capital_per_anum_%",
-            ]
-            call_columns = [
-                "strike",
-                "expiration",
-                "midpoint",
-                "premium_collected",
-                "capital_required",
-                "return_on_capital_%",
-                "implied_volatility",
-                "risk_adjusted_score",
-                "delta",
-                "return_on_capital_per_anum_%",
-            ]
+               # Calculate premium and return on capital
+               otm_puts["premium_collected"] = otm_puts["midpoint"] * 100
+               otm_calls["premium_collected"] = otm_calls["midpoint"] * 100
 
-            all_put_data.append(otm_puts[put_columns])
-            all_call_data.append(otm_calls[call_columns])
+               otm_puts["capital_required"] = otm_puts["strike"] * 100
+               otm_calls["capital_required"] = otm_calls["strike"] * 100
 
-        except Exception as e:
-            logger.error(f"Error fetching data for {exp_date}: {e}", exc_info=True)
+               otm_puts["return_on_capital_%"] = (
+                   otm_puts["premium_collected"] / otm_puts["capital_required"]
+               ) * 100
+               otm_calls["return_on_capital_%"] = (
+                   otm_calls["premium_collected"] / otm_calls["capital_required"]
+               ) * 100
+
+               days_to_expiration = (pd.to_datetime(exp_date) - pd.Timestamp.today()).days
+
+               otm_puts["return_on_capital_per_anum_%"] = (
+                   otm_puts["return_on_capital_%"] / days_to_expiration
+               ) * 365
+               otm_calls["return_on_capital_per_anum_%"] = (
+                   otm_calls["return_on_capital_%"] / days_to_expiration
+               ) * 365
+
+               # Include IV
+               otm_puts["implied_volatility"] = otm_puts["impliedVolatility"] * 100  # Convert to %
+               otm_calls["implied_volatility"] = otm_calls["impliedVolatility"] * 100
+
+               # Calculate risk-adjusted score (ROC / IV)
+               otm_puts["risk_adjusted_score"] = otm_puts["return_on_capital_%"] / otm_puts["implied_volatility"]
+               otm_calls["risk_adjusted_score"] = (
+                   otm_calls["return_on_capital_%"] / otm_calls["implied_volatility"]
+               )
+
+               # For puts
+               otm_puts["days_to_exp"] = (pd.to_datetime(otm_puts["expiration"]) - today).dt.days
+               otm_puts["T"] = otm_puts["days_to_exp"] / 365  # time in years
+               otm_puts["delta"] = bs_put_delta(
+                   S=current_price,
+                   K=otm_puts["strike"],
+                   T=otm_puts["T"],
+                   r=risk_free_rate,
+                   sigma=otm_puts["implied_volatility"] / 100,
+               )
+               otm_puts["ticker"] = ticker
+
+               otm_calls["ticker"] = ticker
+               otm_calls["days_to_exp"] = (pd.to_datetime(otm_calls["expiration"]) - today).dt.days
+               otm_calls["T"] = otm_calls["days_to_exp"] / 365  # time in years
+               otm_calls["delta"] = 0
+               # Unused
+               # bs_call_delta(
+               #    S=current_price,
+               #    K=otm_puts['strike'],
+               #    T=otm_puts['T'],
+               #    r=risk_free_rate,
+               #    sigma=otm_calls['implied_volatility'] / 100
+               # )
+
+
+               # Keep relevant columns
+               put_columns = [
+                   "ticker",
+                   "strike",
+                   "expiration",
+                   "midpoint",
+                   "premium_collected",
+                   "capital_required",
+                   "return_on_capital_%",
+                   "return_on_capital_per_anum_%",
+                   "implied_volatility",
+                   "risk_adjusted_score",
+                   "delta",
+                   "return_on_capital_per_anum_%",
+               ]
+               call_columns = [
+                   "ticker",
+                   "strike",
+                   "expiration",
+                   "midpoint",
+                   "premium_collected",
+                   "capital_required",
+                   "return_on_capital_%",
+                   "return_on_capital_per_anum_%",
+                   "implied_volatility",
+                   "risk_adjusted_score",
+                   "delta",
+                   "return_on_capital_per_anum_%",
+               ]
+
+               all_put_data.append(otm_puts[put_columns])
+               all_call_data.append(otm_calls[call_columns])
+
+           except Exception as e:
+               logger.error(f"Error fetching data for {exp_date}: {e}", exc_info=True)
 
     # Combine into DataFrames
     put_df = pd.concat(all_put_data, ignore_index=True)
     call_df = pd.concat(all_call_data, ignore_index=True)
 
     filtered_put_df = put_df[put_df["risk_adjusted_score"] >= min_risk_score].reset_index(drop=True)
-    filtered_put_df = put_df[put_df["delta"] >= -delta_threshold].reset_index(drop=True)
+    filtered_put_df = put_df[put_df["delta"] <= -min_delta_threshold].reset_index(drop=True)
+    filtered_put_df = put_df[put_df["delta"] >= -max_delta_threshold].reset_index(drop=True)
+
+
+
 
     filtered_call_df = call_df[call_df["risk_adjusted_score"] >= min_risk_score].reset_index(drop=True)
 
+    filtered_puts = assign_composite_score(filtered_put_df)
+
+
     # Export to CSV
     output_file = "otm_puts.csv"
-    filtered_put_df.to_csv(output_file, index=False)
+    filtered_puts.to_csv(output_file, index=False)
     logger.info(f"Exported {len(filtered_put_df)} filtered put options to {output_file}")
 
 
