@@ -352,8 +352,16 @@ def process_ticker(ticker, risk_free_rate, percentage_range, today, min_risk_sco
                     "delta_x_iv"
                 ]
 
-                put_data.append(otm_puts[put_columns])
-                call_data.append(otm_calls[call_columns])
+                # Before appending, check and log the data size
+                if not otm_puts.empty:
+                    filtered_puts = otm_puts[put_columns]
+                    logger.debug(f"{ticker} {exp_date}: Adding {len(filtered_puts)} put options")
+                    put_data.append(filtered_puts)
+                
+                if not otm_calls.empty:
+                    filtered_calls = otm_calls[call_columns]
+                    logger.debug(f"{ticker} {exp_date}: Adding {len(filtered_calls)} call options")
+                    call_data.append(filtered_calls)
 
             except Exception as e:
                 logger.error(f"Error fetching data for {ticker}, {exp_date}: {e}", exc_info=True)
@@ -456,11 +464,52 @@ def main():
     
     if all_put_data:
         try:
-            logger.info(f"Combining {len(all_put_data)} put dataframes")
+            # Count actual dataframes with rows
+            non_empty_dfs = sum(1 for df in all_put_data if not df.empty)
+            total_rows = sum(len(df) for df in all_put_data)
+            logger.info(f"Combining {len(all_put_data)} put dataframes ({non_empty_dfs} non-empty with {total_rows} total rows)")
+            
+            # Debug: Look at a sample of dataframes before combining
+            if len(all_put_data) > 0:
+                for i, df in enumerate(all_put_data[:5]):
+                    logger.debug(f"Sample df {i}: shape={df.shape}, columns={list(df.columns)}")
+                    if not df.empty:
+                        logger.debug(f"First row: {df.iloc[0].to_dict()}")
+                        
+            # Combine the dataframes
             put_df = pd.concat(all_put_data, ignore_index=True)
             logger.info(f"Combined put dataframe has {len(put_df)} rows")
+            
+            # Check for column issues or missing data
+            if len(put_df) < total_rows:
+                logger.warning(f"Data loss during concat! Expected {total_rows} rows but got {len(put_df)}")
+                # Check for column mismatches which could cause issues
+                column_sets = [set(df.columns) for df in all_put_data if not df.empty]
+                if len(column_sets) > 1:
+                    all_columns = set.union(*column_sets)
+                    column_differences = [all_columns - cols for cols in column_sets]
+                    if any(column_differences):
+                        logger.warning(f"Column mismatches detected: {column_differences}")
         except Exception as e:
             logger.error(f"Error combining put data: {e}", exc_info=True)
+            # Try a different approach to combine
+            logger.info("Attempting alternative combination approach...")
+            try:
+                # Alternative approach: combine dataframes one by one
+                put_df = pd.DataFrame()
+                for df in all_put_data:
+                    if not df.empty:
+                        if put_df.empty:
+                            put_df = df.copy()
+                        else:
+                            # Check columns match before combining
+                            if set(df.columns) == set(put_df.columns):
+                                put_df = pd.concat([put_df, df], ignore_index=True)
+                            else:
+                                logger.warning(f"Skipping dataframe with mismatched columns: {set(df.columns)} vs {set(put_df.columns)}")
+                logger.info(f"Alternative combination resulted in {len(put_df)} rows")
+            except Exception as e2:
+                logger.error(f"Alternative combination also failed: {e2}", exc_info=True)
     
     if all_call_data:
         try:
