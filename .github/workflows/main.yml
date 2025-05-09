@@ -19,10 +19,7 @@ jobs:
           python-version: '3.13'
       
       - name: Set up uv
-        uses: astral-sh/setup-uv@v1
-      
-      - name: Install dependencies using uv
-        run: uv pip install -e .
+        uses: astral-sh/setup-uv@v5
       
       - name: Run analysis script
         run: uv run src/python/analysis.py
