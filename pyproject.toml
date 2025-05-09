@@ -11,4 +11,5 @@ dependencies = [
     "rich>=14.0.0",
     "scipy>=1.15.2",
     "yfinance>=0.2.58",
+    "lxml>=5.4.0",
 ]

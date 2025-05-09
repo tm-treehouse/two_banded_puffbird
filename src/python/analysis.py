@@ -31,6 +31,7 @@ import xml.etree.ElementTree as ET
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import os
 import numpy as np
 import pandas as pd
 import requests
@@ -85,6 +86,24 @@ def setup_logging(
     logger.info(f"Logging configured. Log file: {log_file_path}")
     return logger
 
+
+def get_sp500_tickers_from_file_or_web(filepath='sp500_tickers.csv', refresh=False):
+    """
+    Fetches S&P 500 tickers from file if it exists. Otherwise scrapes from Wikipedia.
+    Use `refresh=True` to force update from web.
+    """
+    if os.path.exists(filepath) and not refresh:
+        print(f"Loading S&P 500 tickers from cached file: {filepath}")
+        return pd.read_csv(filepath)['ticker'].tolist()
+
+    print("Fetching S&P 500 tickers from Wikipedia...")
+    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+    tables = pd.read_html(url)
+    tickers_df = tables[0][['Symbol']].copy()
+    tickers_df['ticker'] = tickers_df['Symbol'].str.replace('.', '-', regex=False)
+    tickers_df[['ticker']].to_csv(filepath, index=False)
+
+    return tickers_df['ticker'].tolist()
 
 def get_treasury_yield():
     """
@@ -207,8 +226,9 @@ def main():
     today = dt.datetime.today()
 
     # Parameters for AAPL (Example)
-    tickers = ['AAPL', 'MSFT', 'AMD', 'TSLA']
-    percentage_range = 10
+    tickers = get_sp500_tickers_from_file_or_web()
+    percentage_range = 15
+
     #logger.info(f"Analyzing ticker: {ticker} with {percentage_range}% range")
 
     # Filter puts and calls by minimum risk-adjusted score threshold
@@ -216,6 +236,7 @@ def main():
     max_delta_threshold = 0.75
     min_delta_threshold = 0.30
 
+    min_projected_return_pct = 2
 
     # Store premiums for plotting
     all_put_data = []
@@ -236,11 +257,13 @@ def main():
        logger.info(f"Analyzing {len(expiration_dates)} expiration dates: {expiration_dates}")
        # Price bounds for filtering
        put_lower_bound = current_price * (1 - percentage_range / 100)
+       put_upper_bound = current_price * (1 - 5 / 100)
+
        call_upper_bound = current_price * (1 + percentage_range / 100)
        logger.info(f"Price bounds - Put lower: ${put_lower_bound:.2f}, Call upper: ${call_upper_bound:.2f}")
 
        # Limit to a few near-term expirations for speed (e.g., first 5)
-       expiration_dates = expiration_dates[:5]
+       expiration_dates = expiration_dates[2:6]
        logger.debug(f"Available expiration dates: {expiration_dates}")
        for exp_date in expiration_dates:
            try:
@@ -268,7 +291,7 @@ def main():
 
 
                # Filter for OTM and within percentage range
-               otm_puts = puts[(puts["strike"] < current_price) & (puts["strike"] >= put_lower_bound)]
+               otm_puts = puts[(puts["strike"] < current_price) & (puts["strike"] >= put_lower_bound)& (puts["strike"] <= put_upper_bound)]
                otm_calls = calls[(calls["strike"] > current_price) & (calls["strike"] <= call_upper_bound)]
 
                logger.debug(f"Found {len(otm_puts)} OTM puts and {len(otm_calls)} OTM calls for {exp_date}")
@@ -284,12 +307,15 @@ def main():
                otm_puts["capital_required"] = otm_puts["strike"] * 100
                otm_calls["capital_required"] = otm_calls["strike"] * 100
 
+
+
+               #We skew the data to account for slippage
                otm_puts["return_on_capital_%"] = (
                    otm_puts["premium_collected"] / otm_puts["capital_required"]
-               ) * 100
+               ) * 90
                otm_calls["return_on_capital_%"] = (
                    otm_calls["premium_collected"] / otm_calls["capital_required"]
-               ) * 100
+               ) * 90
 
                days_to_expiration = (pd.to_datetime(exp_date) - pd.Timestamp.today()).days
 
@@ -321,11 +347,14 @@ def main():
                    sigma=otm_puts["implied_volatility"] / 100,
                )
                otm_puts["ticker"] = ticker
+               otm_puts["delta_x_iv"] = otm_puts["delta"] * otm_puts["implied_volatility"]
+
 
                otm_calls["ticker"] = ticker
                otm_calls["days_to_exp"] = (pd.to_datetime(otm_calls["expiration"]) - today).dt.days
                otm_calls["T"] = otm_calls["days_to_exp"] / 365  # time in years
                otm_calls["delta"] = 0
+               otm_calls["delta_x_iv"] = otm_calls["delta"] * otm_calls["implied_volatility"]
                # Unused
                # bs_call_delta(
                #    S=current_price,
@@ -349,7 +378,7 @@ def main():
                    "implied_volatility",
                    "risk_adjusted_score",
                    "delta",
-                   "return_on_capital_per_anum_%",
+                   "delta_x_iv"
                ]
                call_columns = [
                    "ticker",
@@ -363,7 +392,7 @@ def main():
                    "implied_volatility",
                    "risk_adjusted_score",
                    "delta",
-                   "return_on_capital_per_anum_%",
+                   "delta_x_iv"
                ]
 
                all_put_data.append(otm_puts[put_columns])
@@ -379,6 +408,8 @@ def main():
     filtered_put_df = put_df[put_df["risk_adjusted_score"] >= min_risk_score].reset_index(drop=True)
     filtered_put_df = put_df[put_df["delta"] <= -min_delta_threshold].reset_index(drop=True)
     filtered_put_df = put_df[put_df["delta"] >= -max_delta_threshold].reset_index(drop=True)
+    filtered_put_df = put_df[put_df["return_on_capital_%"] >= min_projected_return_pct].reset_index(drop=True)
+    filtered_put_df = put_df[put_df["return_on_capital_per_anum_%"] >= 30].reset_index(drop=True)
 
 
 
@@ -387,10 +418,12 @@ def main():
 
     filtered_puts = assign_composite_score(filtered_put_df)
 
+    top_25_puts = filtered_puts.sort_values(by='composite_score', ascending=False).head(25)
+
 
     # Export to CSV
     output_file = "otm_puts.csv"
-    filtered_puts.to_csv(output_file, index=False)
+    top_25_puts.to_csv(output_file, index=False)
     logger.info(f"Exported {len(filtered_put_df)} filtered put options to {output_file}")
 
 
