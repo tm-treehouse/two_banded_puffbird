@@ -220,6 +220,10 @@ def process_ticker(ticker, risk_free_rate, percentage_range, today, min_risk_sco
 
         # Get available option expiration dates
         expiration_dates = stock.options
+        
+        if not expiration_dates:
+            logger.warning(f"No option data available for {ticker}")
+            return put_data, call_data
 
         logger.info(f"Analyzing {len(expiration_dates)} expiration dates: {expiration_dates}")
         # Price bounds for filtering
@@ -399,9 +403,7 @@ def main():
     all_call_data = []
 
     # Use ThreadPoolExecutor to process multiple tickers in parallel
-    max_workers = 10  # Adjust based on your system's capabilities
-    all_put_data = []
-    all_call_data = []
+    max_workers = 5  # Reduced from 10 to avoid rate limiting
     
     logger.info(f"Processing {len(tickers)} tickers in parallel with {max_workers} workers")
     
@@ -422,43 +424,85 @@ def main():
         }
         
         # Process results as they complete
+        completed = 0
+        total = len(future_to_ticker)
+        
         for future in as_completed(future_to_ticker):
             ticker = future_to_ticker[future]
+            completed += 1
             try:
                 put_data, call_data = future.result()
+                # Check if both are empty lists
+                if not put_data and not call_data:
+                    logger.debug(f"No data returned for {ticker}")
+                    continue
+                    
                 if put_data:  # Check if not empty
                     all_put_data.extend(put_data)
                 if call_data:  # Check if not empty
                     all_call_data.extend(call_data)
-                logger.info(f"Completed processing for {ticker}")
+                logger.info(f"Completed processing for {ticker} ({completed}/{total})")
             except Exception as e:
                 logger.error(f"Error processing {ticker}: {e}")
 
     # Rest of the analysis with the collected data
-    if not all_put_data or not all_call_data:
+    if not all_put_data and not all_call_data:
         logger.error("No valid option data collected")
         return
         
     # Combine into DataFrames
-    put_df = pd.concat(all_put_data, ignore_index=True) if all_put_data else pd.DataFrame()
-    call_df = pd.concat(all_call_data, ignore_index=True) if all_call_data else pd.DataFrame()
+    put_df = pd.DataFrame()
+    call_df = pd.DataFrame()
+    
+    if all_put_data:
+        try:
+            logger.info(f"Combining {len(all_put_data)} put dataframes")
+            put_df = pd.concat(all_put_data, ignore_index=True)
+            logger.info(f"Combined put dataframe has {len(put_df)} rows")
+        except Exception as e:
+            logger.error(f"Error combining put data: {e}", exc_info=True)
+    
+    if all_call_data:
+        try:
+            call_df = pd.concat(all_call_data, ignore_index=True)
+        except Exception as e:
+            logger.error(f"Error combining call data: {e}", exc_info=True)
 
     if put_df.empty:
-        logger.warning("No valid put option data available")
+        logger.warning("No valid put option data available after concat")
     else:
-        filtered_put_df = put_df[put_df["risk_adjusted_score"] >= min_risk_score].reset_index(drop=True)
-        filtered_put_df = filtered_put_df[filtered_put_df["delta"] <= -min_delta_threshold].reset_index(drop=True)
-        filtered_put_df = filtered_put_df[filtered_put_df["delta"] >= -max_delta_threshold].reset_index(drop=True)
-        filtered_put_df = filtered_put_df[filtered_put_df["return_on_capital_%"] >= min_projected_return_pct].reset_index(drop=True)
-        filtered_put_df = filtered_put_df[filtered_put_df["return_on_capital_per_anum_%"] >= 30].reset_index(drop=True)
+        # Apply filters one by one with logging to track data loss
+        logger.info(f"Starting with {len(put_df)} put options")
+        
+        filtered_put_df = put_df[put_df["risk_adjusted_score"] >= min_risk_score]
+        logger.info(f"After risk score filter: {len(filtered_put_df)} rows")
+        
+        filtered_put_df = filtered_put_df[filtered_put_df["delta"] <= -min_delta_threshold]
+        logger.info(f"After min delta filter: {len(filtered_put_df)} rows")
+        
+        filtered_put_df = filtered_put_df[filtered_put_df["delta"] >= -max_delta_threshold]
+        logger.info(f"After max delta filter: {len(filtered_put_df)} rows")
+        
+        filtered_put_df = filtered_put_df[filtered_put_df["return_on_capital_%"] >= min_projected_return_pct]
+        logger.info(f"After return filter: {len(filtered_put_df)} rows")
+        
+        filtered_put_df = filtered_put_df[filtered_put_df["return_on_capital_per_anum_%"] >= 30]
+        logger.info(f"After annualized return filter: {len(filtered_put_df)} rows")
 
-        filtered_puts = assign_composite_score(filtered_put_df)
-        top_25_puts = filtered_puts.sort_values(by='composite_score', ascending=False).head(25)
+        if filtered_put_df.empty:
+            logger.warning("All rows filtered out! No data remains after applying filters.")
+            # Create a sample row to analyze what's happening
+            if not put_df.empty:
+                sample = put_df.iloc[0:5]
+                logger.info(f"Sample data:\n{sample[['ticker', 'strike', 'delta', 'risk_adjusted_score', 'return_on_capital_%', 'return_on_capital_per_anum_%']]}")
+        else:
+            filtered_puts = assign_composite_score(filtered_put_df)
+            top_25_puts = filtered_puts.sort_values(by='composite_score', ascending=False).head(25)
 
-        # Export to CSV
-        output_file = "otm_puts.csv"
-        top_25_puts.to_csv(output_file, index=False)
-        logger.info(f"Exported {len(top_25_puts)} filtered put options to {output_file}")
+            # Export to CSV
+            output_file = "otm_puts.csv"
+            top_25_puts.to_csv(output_file, index=False)
+            logger.info(f"Exported {len(top_25_puts)} filtered put options to {output_file}")
 
     if call_df.empty:
         logger.warning("No valid call option data available")
