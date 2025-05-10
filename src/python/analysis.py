@@ -592,3 +592,111 @@ def main():
                     if not df.empty:
                         if put_df.empty:
                             put_df = df.copy()
+                        else:
+                            # Check columns match before combining
+                            if set(df.columns) == set(put_df.columns):
+                                put_df = pd.concat([put_df, df], ignore_index=True)
+                            else:
+                                logger.warning(f"Skipping dataframe with mismatched columns: {set(df.columns)} vs {set(put_df.columns)}")
+                logger.info(f"Alternative combination resulted in {len(put_df)} rows")
+            except Exception as e2:
+                logger.error(f"Alternative combination also failed: {e2}", exc_info=True)
+    
+    if all_call_data:
+        try:
+            call_df = pd.concat(all_call_data, ignore_index=True)
+            logger.info(f"Combined call dataframe has {len(call_df)} rows")
+        except Exception as e:
+            logger.error(f"Error combining call data: {e}", exc_info=True)
+
+    if put_df.empty:
+        logger.warning("No valid put option data available after concat")
+    else:
+        # Debug: Before applying any filters, sample the data to see what we're working with
+        if not put_df.empty:
+            sample_size = min(5, len(put_df))
+            sample = put_df.iloc[:sample_size]
+            logger.info(f"Sample of raw data before filtering ({sample_size} rows):")
+            for idx, row in sample.iterrows():
+                logger.info(f"Row {idx}: ticker={row['ticker']}, strike={row['strike']}, "
+                         f"delta={row['delta']}, risk_score={row['risk_adjusted_score']}, "
+                         f"ROC={row['return_on_capital_%']}, annual={row['return_on_capital_per_anum_%']}")
+            
+            # Save the raw data to CSV for inspection
+            put_df.to_csv("raw_put_data.csv", index=False)
+            logger.info(f"Saved {len(put_df)} rows of raw put data to raw_put_data.csv")
+
+        # Apply filters one by one with logging to track data loss
+        logger.info(f"Starting with {len(put_df)} put options")
+        
+        filtered_put_df = put_df[put_df["risk_adjusted_score"] >= min_risk_score]
+        logger.info(f"After risk score filter: {len(filtered_put_df)} rows")
+        
+        filtered_put_df = filtered_put_df[filtered_put_df["delta"] <= -min_delta_threshold]
+        logger.info(f"After min delta filter: {len(filtered_put_df)} rows")
+        
+        filtered_put_df = filtered_put_df[filtered_put_df["delta"] >= -max_delta_threshold]
+        logger.info(f"After max delta filter: {len(filtered_put_df)} rows")
+        
+        filtered_put_df = filtered_put_df[filtered_put_df["return_on_capital_%"] >= min_projected_return_pct]
+        logger.info(f"After return filter: {len(filtered_put_df)} rows")
+        
+        filtered_put_df = filtered_put_df[filtered_put_df["return_on_capital_per_anum_%"] >= 30]
+        logger.info(f"After annualized return filter: {len(filtered_put_df)} rows")
+
+        if filtered_put_df.empty:
+            logger.warning("All rows filtered out! No data remains after applying filters.")
+            
+            # Create a sample row to analyze what's happening
+            if not put_df.empty:
+                sample = put_df.iloc[0:5]
+                logger.info(f"Sample data:\n{sample[['ticker', 'strike', 'delta', 'risk_adjusted_score', 'return_on_capital_%', 'return_on_capital_per_anum_%']]}")
+                
+                # Check which filters are eliminating most rows
+                failed_risk = put_df[put_df["risk_adjusted_score"] < min_risk_score].shape[0]
+                failed_min_delta = put_df[put_df["delta"] > -min_delta_threshold].shape[0]
+                failed_max_delta = put_df[put_df["delta"] < -max_delta_threshold].shape[0]
+                failed_return = put_df[put_df["return_on_capital_%"] < min_projected_return_pct].shape[0] 
+                failed_annual = put_df[put_df["return_on_capital_per_anum_%"] < 30].shape[0]
+                
+                logger.info(f"Filter impact analysis:")
+                logger.info(f"  - {failed_risk}/{len(put_df)} rows failed risk score filter")
+                logger.info(f"  - {failed_min_delta}/{len(put_df)} rows failed min delta filter")
+                logger.info(f"  - {failed_max_delta}/{len(put_df)} rows failed max delta filter")
+                logger.info(f"  - {failed_return}/{len(put_df)} rows failed return filter")
+                logger.info(f"  - {failed_annual}/{len(put_df)} rows failed annual return filter")
+                
+                # Try with more relaxed filters and save to a different file
+                relaxed_filters = put_df[
+                    (put_df["risk_adjusted_score"] >= min_risk_score / 2) & 
+                    (put_df["delta"] <= -min_delta_threshold / 2) &
+                    (put_df["delta"] >= -1.0) &
+                    (put_df["return_on_capital_%"] >= min_projected_return_pct / 2) &
+                    (put_df["return_on_capital_per_anum_%"] >= 15)
+                ]
+                
+                if not relaxed_filters.empty:
+                    relaxed_scored = assign_composite_score(relaxed_filters)
+                    top_relaxed = relaxed_scored.sort_values(by='composite_score', ascending=False).head(25)
+                    top_relaxed.to_csv("relaxed_otm_puts.csv", index=False)
+                    logger.info(f"Saved {len(top_relaxed)} rows with relaxed filters to relaxed_otm_puts.csv")
+        else:
+            filtered_puts = assign_composite_score(filtered_put_df)
+            top_25_puts = filtered_puts.sort_values(by='composite_score', ascending=False).head(25)
+
+            # Export to CSV
+            output_file = "otm_puts.csv"
+            top_25_puts.to_csv(output_file, index=False)
+            logger.info(f"Exported {len(top_25_puts)} filtered put options to {output_file}")
+
+    if call_df.empty:
+        logger.warning("No valid call option data available")
+    else:
+        filtered_call_df = call_df[call_df["risk_adjusted_score"] >= min_risk_score].reset_index(drop=True)
+        # Process call options as needed
+        
+    logger.info("Analysis complete")
+
+
+if __name__ == "__main__":
+    main()
