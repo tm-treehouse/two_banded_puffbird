@@ -1,0 +1,4 @@
+# List of directories (one per line) to format with Ruff
+./src
+./scripts
+# Add more directories as needed
