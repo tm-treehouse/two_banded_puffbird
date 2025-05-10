@@ -48,6 +48,10 @@ pd.options.mode.chained_assignment = None  # default='warn'
 # Initialize logger
 logger = logging.getLogger("options_analysis")
 
+# Create output directory if it doesn't exist
+out_dir = Path("out")
+out_dir.mkdir(exist_ok=True)
+
 
 def setup_logging(
     log_level=logging.INFO, log_file="options_analysis.log", max_file_size_mb=1, backup_count=3
@@ -90,14 +94,25 @@ def setup_logging(
     return logger
 
 
-def get_sp500_tickers_from_file_or_web(filepath="sp500_tickers.csv", refresh=False):
+def get_sp500_tickers_from_file_or_web(filepath=None, refresh=False):
     """
     Fetches S&P 500 tickers from file if it exists. Otherwise scrapes from Wikipedia.
     Use `refresh=True` to force update from web.
     """
+    # Default filepath is in the out directory
+    if filepath is None:
+        filepath = out_dir / "sp500_tickers.csv"
+
+    # Also check the root directory for backward compatibility
+    root_filepath = "sp500_tickers.csv"
+
     if os.path.exists(filepath) and not refresh:
         print(f"Loading S&P 500 tickers from cached file: {filepath}")
         return pd.read_csv(filepath)["ticker"].tolist()
+    elif os.path.exists(root_filepath) and not refresh:
+        # For backward compatibility, check the root directory
+        print(f"Loading S&P 500 tickers from cached file: {root_filepath}")
+        return pd.read_csv(root_filepath)["ticker"].tolist()
 
     print("Fetching S&P 500 tickers from Wikipedia...")
     url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -656,8 +671,8 @@ def main():
                 )
 
             # Save the raw data to CSV for inspection
-            put_df.to_csv("raw_put_data.csv", index=False)
-            logger.info(f"Saved {len(put_df)} rows of raw put data to raw_put_data.csv")
+            put_df.to_csv(out_dir / "raw_put_data.csv", index=False)
+            logger.info(f"Saved {len(put_df)} rows of raw put data to {out_dir}/raw_put_data.csv")
 
         # Apply filters one by one with logging to track data loss
         logger.info(f"Starting with {len(put_df)} put options")
@@ -713,14 +728,16 @@ def main():
                 if not relaxed_filters.empty:
                     relaxed_scored = assign_composite_score(relaxed_filters)
                     top_relaxed = relaxed_scored.sort_values(by="composite_score", ascending=False).head(25)
-                    top_relaxed.to_csv("relaxed_otm_puts.csv", index=False)
-                    logger.info(f"Saved {len(top_relaxed)} rows with relaxed filters to relaxed_otm_puts.csv")
+                    top_relaxed.to_csv(out_dir / "relaxed_otm_puts.csv", index=False)
+                    logger.info(
+                        f"Saved {len(top_relaxed)} rows with relaxed filters to {out_dir}/relaxed_otm_puts.csv"
+                    )
         else:
             filtered_puts = assign_composite_score(filtered_put_df)
             top_25_puts = filtered_puts.sort_values(by="composite_score", ascending=False).head(25)
 
             # Export to CSV
-            output_file = "otm_puts.csv"
+            output_file = out_dir / "otm_puts.csv"
             top_25_puts.to_csv(output_file, index=False)
             logger.info(f"Exported {len(top_25_puts)} filtered put options to {output_file}")
 
