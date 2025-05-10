@@ -52,6 +52,39 @@ jobs:
           fi
           echo ""
           echo "::endgroup::"
+          
+      - name: Convert CSV to Markdown Table
+        id: csv-to-md
+        run: |
+          echo "::group::Converting CSV to Markdown"
+          # Read CSV header to create markdown table header
+          HEADER=$(head -n 1 "${{ steps.find-csv.outputs.csv_file }}")
+          
+          # Create markdown table content
+          echo "Creating markdown table from CSV data"
+          MARKDOWN_TABLE="## Analysis Results - $(date +"%Y-%m-%d")\n\n"
+          
+          # Convert header to markdown table format
+          MARKDOWN_TABLE+="| $(echo $HEADER | sed 's/,/ | /g') |\n"
+          MARKDOWN_TABLE+="| $(echo $HEADER | sed 's/[^,]*/-/g' | sed 's/,/ | /g') |\n"
+          
+          # Add data rows (limited to 50 rows for readability)
+          tail -n +2 "${{ steps.find-csv.outputs.csv_file }}" | head -n 50 | while read -r line; do
+            MARKDOWN_TABLE+="| $(echo $line | sed 's/,/ | /g') |\n"
+          done
+          
+          # Save markdown to a file
+          echo -e "$MARKDOWN_TABLE" > analysis_results.md
+          echo "::endgroup::"
+      
+      - name: Create GitHub Discussion
+        uses: peter-evans/create-or-update-discussion@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          category-id: "show-and-tell" # This is the ID for "Show and Tell" category
+          title: "Options Analysis Results - $(date +"%Y-%m-%d %H:%M")"
+          body-file: analysis_results.md
 
       # - name: Send email with CSV attachment
       #   uses: dawidd6/action-send-mail@v3
