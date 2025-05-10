@@ -25,24 +25,24 @@ uv run src/python/analysis.py
 ----------------------------------------------------
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import datetime as dt
 import logging
-import xml.etree.ElementTree as ET
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 import os
+from pathlib import Path
+from random import sample as random_sample  # Rename the import to avoid collision
+import time
+import traceback
+import xml.etree.ElementTree as ET
+
 import numpy as np
 import pandas as pd
 import requests
-import yfinance as yf
 from rich.console import Console
 from rich.logging import RichHandler
 from scipy.stats import norm
-import time
-from random import sample as random_sample  # Rename the import to avoid collision
-import traceback
+import yfinance as yf
 
 pd.options.mode.chained_assignment = None  # default='warn'
 

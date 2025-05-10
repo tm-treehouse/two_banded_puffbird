@@ -18,12 +18,25 @@ dependencies = [
 
 [tool.ruff]
 # Exclude tests directories
-exclude = ["**/tests/*"]
+# exclude = ["**/tests/*"]
 line-length = 110
 
 [tool.ruff.lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)
+# Enable Pyflakes (`F`), pycodestyle (`E`), isort (`I`), and warning (`W`) rules
 select = ["E", "F", "W", "I"]
+
+# Import sorting configurations
+[tool.ruff.lint.isort]
+# Whether to combine multiple imports from the same module into a single import statement
+combine-as-imports = true
+# Add a blank line after all import statements
+split-on-trailing-comma = true
+# Sort standard library imports, third-party, and local imports in groups
+force-sort-within-sections = true
+# Order imports alphabetically within sections
+order-by-type = true
+# Use the following sections for imports: standard library, third-party, and local
+known-first-party = ["src"]
 
 [tool.ruff.format]
 # Use double quotes for strings
