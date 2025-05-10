@@ -10,16 +10,45 @@ Created on: 2025-05-10
 Description:
 Entry point for the financial options analysis tool.
 This script provides a command-line interface to the options_analysis package.
+The tool calculates risk-adjusted returns for put and call options based on
+current market data, fetches stock prices, treasury yields, and option chains,
+then applies Black-Scholes modeling to identify potentially favorable option trades.
 
 ----------------------------------------------------
 
-Arguments:
-Run with --help to see available arguments.
+Usage Examples:
+
+1. Show help and available options:
+   $ uv run src/python/main.py --help
+
+2. Analyze specific ticker symbols:
+   $ uv run src/python/main.py --tickers AAPL,MSFT,GOOGL
+
+3. Analyze S&P 500 stocks with custom parameters:
+   $ uv run src/python/main.py --max-workers 4 --percentage-range 20 --min-delta 0.35
+
+4. Run with detailed logging:
+   $ uv run src/python/main.py --tickers AAPL --log-level DEBUG
+
+5. Force refresh of S&P 500 tickers list:
+   $ uv run src/python/main.py --refresh-tickers
+
+Parameters:
+  --tickers: Comma-separated list of ticker symbols (default: S&P 500)
+  --refresh-tickers: Force refresh of S&P 500 tickers from web
+  --max-workers: Number of parallel threads (default: 3)
+  --percentage-range: Price range percentage from current price (default: 15)
+  --min-delta: Minimum absolute delta threshold (default: 0.30)
+  --max-delta: Maximum absolute delta threshold (default: 0.75)
+  --min-return: Minimum return on capital percentage (default: 2)
+  --min-annual-return: Minimum annualized return percentage (default: 30)
+  --min-risk-score: Minimum risk-adjusted score (default: 0.04)
+  --log-level: Logging level (default: INFO)
 
 ----------------------------------------------------
 How to run this script:
 cd two_banded_puffbird
-uv run src/python/main.py
+uv run src/python/main.py [options]
 ----------------------------------------------------
 """
 
