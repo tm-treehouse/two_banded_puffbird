@@ -12,4 +12,36 @@ dependencies = [
     "scipy>=1.15.2",
     "yfinance>=0.2.58",
     "lxml>=5.4.0",
+    "ruff>=0.11.9",
+    "pre-commit>=4.2.0",
 ]
+
+[tool.ruff]
+# Exclude tests directories
+# exclude = ["**/tests/*"]
+line-length = 110
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`), pycodestyle (`E`), isort (`I`), and warning (`W`) rules
+# F401 specifically checks for unused imports
+select = ["E", "F", "W", "I", "F401"]
+
+# Import sorting configurations
+[tool.ruff.lint.isort]
+# Whether to combine multiple imports from the same module into a single import statement
+combine-as-imports = true
+# Add a blank line after all import statements
+split-on-trailing-comma = true
+# Sort standard library imports, third-party, and local imports in groups
+force-sort-within-sections = true
+# Order imports alphabetically within sections
+order-by-type = true
+# Use the following sections for imports: standard library, third-party, and local
+known-first-party = ["src"]
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+# Indent with 4 spaces
+indent-style = "space"
+line-ending = "auto"
