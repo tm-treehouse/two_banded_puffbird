@@ -227,7 +227,7 @@ class YahooFinanceProvider(MarketDataProvider):
         # Also check the root directory for backward compatibility
         root_filepath = "sp500_tickers.csv"
 
-        if os.path.exists(filepath) and not refresh:
+        if filepath.exists() and not refresh:
             logger.info(f"Loading S&P 500 tickers from cached file: {filepath}")
             return pd.read_csv(filepath)["ticker"].tolist()
         elif os.path.exists(root_filepath) and not refresh:
