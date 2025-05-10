@@ -80,7 +80,7 @@ jobs:
       - name: Create GitHub Discussion
         uses: peter-evans/create-or-update-discussion@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ github.token }}  # Use the default token provided by GitHub Actions
           repository: ${{ github.repository }}
           category-id: "show-and-tell" # This is the ID for "Show and Tell" category
           title: "Options Analysis Results - $(date +"%Y-%m-%d %H:%M")"
