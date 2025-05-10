@@ -21,6 +21,28 @@ uv run pre-commit run
 
 ## Available Scripts
 - `format_code.sh` - Common script used both by git pre-commit hook and GitHub Actions workflow
+- `format_dirs.txt` - Configuration file listing directories to format (one per line)
+
+### Using format_code.sh
+
+You can use the script in several ways:
+
+1. **Default behavior** - Format directories listed in `format_dirs.txt`:
+   ```bash
+   ./scripts/format_code.sh
+   ```
+
+2. **Specify directories** - Format only specific directories:
+   ```bash
+   ./scripts/format_code.sh ./path/to/directory1 ./path/to/directory2
+   ```
+
+### What the Script Does
+The script performs three operations on your Python code:
+
+1. **Format code**: Applies Ruff's formatter to ensure consistent code style
+2. **Sort imports**: Organizes imports alphabetically and by type
+3. **Remove unused imports**: Identifies and removes any imports that aren't used
 
 ## How It Works
 The formatting functionality is implemented in two ways:

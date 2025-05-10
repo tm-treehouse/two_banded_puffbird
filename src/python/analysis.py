@@ -31,7 +31,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
-from random import sample as random_sample  # Rename the import to avoid collision
 import time
 import traceback
 import xml.etree.ElementTree as ET
