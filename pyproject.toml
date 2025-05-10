@@ -12,4 +12,22 @@ dependencies = [
     "scipy>=1.15.2",
     "yfinance>=0.2.58",
     "lxml>=5.4.0",
+    "ruff>=0.11.9",
+    "pre-commit>=4.2.0",
 ]
+
+[tool.ruff]
+# Exclude tests directories
+exclude = ["**/tests/*"]
+line-length = 110
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+# Indent with 4 spaces
+indent-style = "space"
+line-ending = "auto"

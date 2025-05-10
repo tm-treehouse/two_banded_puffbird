@@ -1,0 +1,10 @@
+# pre-commit configuration to install the hook for all users
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: Ruff Formatter
+        description: Format files with Ruff
+        entry: scripts/format_code.sh
+        language: script
+        pass_filenames: false
