@@ -41,7 +41,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 from scipy.stats import norm
 import time
-from random import sample
+from random import sample as random_sample  # Rename the import to avoid collision
 import traceback
 
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -274,13 +274,13 @@ def process_ticker(ticker, risk_free_rate, percentage_range, today, min_risk_sco
                     
                     # Relaxed filtering criteria for options
                     puts = puts[
-                        (puts['volume'] >= 5) &  # Reduced from > 0
-                        (puts['openInterest'] >= 10)  # Reduced from >= 100
+                        (puts['volume'] > 0) &  # Reduced from > 0
+                        (puts['openInterest'] >= 100)  # Reduced from >= 100
                     ]
 
                     calls = calls[
-                        (calls['volume'] >= 5) &  # Reduced from > 0
-                        (calls['openInterest'] >= 10)  # Reduced from >= 100
+                        (calls['volume'] > 0) &  # Reduced from > 0
+                        (calls['openInterest'] >= 100)  # Reduced from >= 100
                     ]
                     
                     # If we have no valid options after filtering, try next expiration
@@ -293,7 +293,7 @@ def process_ticker(ticker, risk_free_rate, percentage_range, today, min_risk_sco
                     puts["midpoint"] = (puts["bid"] + puts["ask"]) / 2
 
                     # Filter for OTM and within percentage range - more relaxed criteria
-                    otm_puts = puts[(puts["strike"] < current_price) & (puts["strike"] >= put_lower_bound)]
+                    otm_puts = puts[(puts["strike"] < current_price) & (puts["strike"] >= put_lower_bound) & (puts["strike"] <= put_upper_bound)]
                     otm_calls = calls[(calls["strike"] > current_price) & (calls["strike"] <= call_upper_bound)]
                     
                     if otm_puts.empty and otm_calls.empty:
@@ -452,8 +452,8 @@ def main():
     # Parameters for AAPL (Example)
     full_tickers = get_sp500_tickers_from_file_or_web()
     # Use a smaller sample initially to debug (comment this line for full run)
-    tickers = sample(full_tickers, min(50, len(full_tickers)))
-    
+    #tickers = random_sample(full_tickers, min(50, len(full_tickers)))
+    tickers = full_tickers
     logger.info(f"Processing {len(tickers)}/{len(full_tickers)} tickers")
     
     percentage_range = 15
