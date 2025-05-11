@@ -170,19 +170,106 @@ class YahooFinanceProvider(MarketDataProvider):
             float: Current risk-free rate as a decimal (e.g., 0.045 for 4.5%)
         """
         try:
-            url = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=all&page=0"
-            response = requests.get(url)
-            root = ET.fromstring(response.content)
+            # Try the official Treasury website approach first
+            yield_10y = self._get_treasury_yield()
+            if yield_10y is not None:
+                logger.info(f"Current 10y Treasury yield from Treasury website: {yield_10y}")
+                return yield_10y
 
-            # Extract the most recent date and yield
-            latest_entry = root.findall(".//entry")[-1]
-            yield_10y = latest_entry.find(".//td[@class='GS10']").text
-            logger.info(f"Current 10y Treasury yield: {yield_10y}")
-            return float(yield_10y)
+            # Fall back to alternative sources when Treasury website parsing fails
+            yield_10y = self._get_wsj_yield()
+            if yield_10y is not None:
+                logger.info(f"Current 10y Treasury yield from WSJ: {yield_10y}")
+                return yield_10y
+
+            # If all sources fail, use the default value
+            logger.warning("All sources failed to provide risk-free rate")
+            return 0.045  # Default fallback 4.5%
+
         except Exception as e:
             logger.error(f"Failed to fetch treasury yield: {e}")
             logger.warning("Using default risk-free rate of 0.045 (4.5%)")
             return 0.045  # Default fallback
+
+    def _get_treasury_yield(self) -> float:
+        """
+        Get current risk-free rate from Treasury website.
+
+        Returns:
+            float or None: Current 10-year Treasury yield as a decimal, or None if unavailable
+        """
+        try:
+            url = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=all&page=0"
+            response = requests.get(url, timeout=60)
+            if response.status_code != 200:
+                logger.warning(f"Treasury API returned status code: {response.status_code}")
+                return None
+
+            root = ET.fromstring(response.content)
+
+            # Try to find the date of the most recent data
+            updated = root.find(".//{http://www.w3.org/2005/Atom}updated")
+            if updated is not None and updated.text:
+                logger.info(f"Treasury data last updated: {updated.text}")
+
+            # Look for content that might contain the yield information
+            # Search for BC_10YEAR which is the 10-year benchmark Treasury yield
+            for elem in root.iter():
+                if elem.text and any(
+                    term in str(elem.text).lower() for term in ["bc_10year", "10 yr", "10-year", "gs10"]
+                ):
+                    logger.debug(f"Found promising element: {elem.tag} with text: {elem.text[:30]}...")
+
+                    # Look for a value format that appears to be a percentage
+                    import re
+
+                    value_match = re.search(r"(\d+\.\d+)\s*%?", elem.text)
+                    if value_match:
+                        value_str = value_match.group(1)
+                        logger.info(f"Found 10-year yield value: {value_str}")
+                        return float(value_str) / 100  # Convert percentage to decimal
+
+            logger.warning("Could not extract 10-year yield from Treasury website")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error in Treasury yield extraction: {str(e)}")
+            return None
+
+    def _get_wsj_yield(self) -> float:
+        """
+        Get current risk-free rate from Wall Street Journal as fallback.
+
+        Returns:
+            float or None: Current 10-year Treasury yield as a decimal, or None if unavailable
+        """
+        try:
+            url = "https://www.wsj.com/market-data/quotes/bond/BX/TMUBMUSD10Y?mod=md_bond_overview"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 200 and "text/html" in response.headers.get("Content-Type", ""):
+                # Using simple string search for the yield value
+                start_marker = '"last_price":"'
+                end_marker = '"'
+
+                if start_marker in response.text:
+                    start = response.text.find(start_marker) + len(start_marker)
+                    end = response.text.find(end_marker, start)
+
+                    if start > 0 and end > start:
+                        value_str = response.text[start:end]
+                        logger.info(f"WSJ 10-year yield value: {value_str}")
+                        return float(value_str) / 100  # Convert percentage to decimal
+
+            logger.warning("Could not extract 10-year yield from WSJ")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error in WSJ yield extraction: {str(e)}")
+            return None
 
     def get_available_expiration_dates(self, ticker: str) -> List[str]:
         """

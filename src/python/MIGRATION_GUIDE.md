@@ -38,7 +38,7 @@ Instead of directly running `analysis.py`, use `main.py` with command-line argum
 uv run src/python/analysis.py
 
 # New way (with options)
-PYTHONPATH=/path/to/two_banded_puffbird uv run src/python/main.py --tickers AAPL,MSFT --max-workers 4
+uv run src/python/main.py --tickers AAPL,MSFT --max-workers 4
 ```
 
 ### Package Usage
