@@ -4,16 +4,16 @@ Market data providers for fetching stock and options data.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
 import logging
 import os
 from pathlib import Path
-import re
 from typing import Any, List, Tuple
 
 import pandas as pd
 import requests
 import yfinance as yf
+
+from options_analysis.treasury_helper import get_treasury_yield
 
 logger = logging.getLogger("options_analysis")
 
@@ -171,8 +171,8 @@ class YahooFinanceProvider(MarketDataProvider):
             float: Current risk-free rate as a decimal (e.g., 0.045 for 4.5%)
         """
         try:
-            # Try the official Treasury website approach first
-            yield_10y = self._get_treasury_yield()
+            # Try the official Treasury website approach first using the improved method
+            yield_10y = get_treasury_yield()
             if yield_10y is not None:
                 logger.info(f"Current 10y Treasury yield from Treasury website: {yield_10y}")
                 return yield_10y
@@ -192,97 +192,6 @@ class YahooFinanceProvider(MarketDataProvider):
             logger.warning("Using default risk-free rate of 0.045 (4.5%)")
             return 0.045  # Default fallback
 
-    def _get_treasury_yield(self) -> float:
-        """
-        Get current risk-free rate from Treasury website.
-
-        Returns:
-            float or None: Current 10-year Treasury yield as a decimal, or None if unavailable
-        """
-        # Get current year as an integer
-        current_year = datetime.now().year
-        try:
-            url = f"https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xmlview?data=daily_treasury_yield_curve&field_tdr_date_value={current_year}"
-            response = requests.get(url, timeout=30)  # Reduced timeout for faster failures
-            if response.status_code != 200:
-                logger.warning(f"Treasury API returned status code: {response.status_code}")
-                return None
-
-            # Skip XML parsing and work directly with the response text
-            content_str = response.text
-
-            # Define reasonable yield range for validation (in percent)
-            min_yield, max_yield = 3.0, 6.0
-
-            # Method 1: Direct regex search for BC_10YEAR tag and its value
-            bc10_pattern = r"<[^>]*BC_10YEAR[^>]*>([0-9.]+)<"
-            bc10_matches = re.findall(bc10_pattern, content_str)
-
-            if bc10_matches:
-                for value_str in bc10_matches[:5]:  # Check first few matches
-                    try:
-                        value = float(value_str)
-                        if min_yield <= value <= max_yield:  # Sanity check the value
-                            logger.info(f"Found valid BC_10YEAR value: {value}")
-                            return value / 100  # Convert percentage to decimal
-                        else:
-                            logger.debug(f"Found BC_10YEAR value but outside range: {value}")
-                    except ValueError:
-                        continue
-
-            # Method 2: Try to find 10-year mentions with nearby numbers
-            ten_year_patterns = [
-                r"10-year[^0-9.]*([0-9.]+)",
-                r"10 year[^0-9.]*([0-9.]+)",
-                r"10yr[^0-9.]*([0-9.]+)",
-                r"10-Year[^0-9.]*([0-9.]+)",
-            ]
-
-            for pattern in ten_year_patterns:
-                matches = re.findall(pattern, content_str, re.IGNORECASE)
-                for value_str in matches:
-                    try:
-                        value = float(value_str)
-                        if min_yield <= value <= max_yield:
-                            logger.info(f"Found valid 10-year mention with value: {value}")
-                            return value / 100  # Convert percentage to decimal
-                    except ValueError:
-                        continue
-
-            # Method 3: Look for GS10 references
-            gs10_pattern = r"GS10[^0-9.]*([0-9.]+)"
-            gs10_matches = re.findall(gs10_pattern, content_str, re.IGNORECASE)
-
-            for value_str in gs10_matches:
-                try:
-                    value = float(value_str)
-                    if min_yield <= value <= max_yield:
-                        logger.info(f"Found valid GS10 value: {value}")
-                        return value / 100
-                except ValueError:
-                    continue
-
-            # Method 4: Last resort - look for numbers in typical yield range
-            all_numbers = re.findall(r"(\d+\.\d+)", content_str)
-            yield_range = [n for n in all_numbers if min_yield <= float(n) <= max_yield]
-
-            if yield_range:
-                value = float(yield_range[0])
-                logger.info(f"Found number in typical yield range: {value}")
-                return value / 100  # Convert percentage to decimal
-
-            # If no reasonable value found, hardcode today's known rate
-            # This is better than returning None when we know current rates
-            logger.warning(
-                "Could not extract valid 10-year yield from Treasury website, using current known rate"
-            )
-            known_rate = 0.0452  # 4.52% as of May 10, 2025 (example)
-            return known_rate
-
-        except Exception as e:
-            logger.error(f"Error in Treasury yield extraction: {str(e)}")
-            return None
-
     def _get_wsj_yield(self) -> float:
         """
         Get current risk-free rate from Wall Street Journal as fallback.
@@ -293,7 +202,11 @@ class YahooFinanceProvider(MarketDataProvider):
         try:
             url = "https://www.wsj.com/market-data/quotes/bond/BX/TMUBMUSD10Y?mod=md_bond_overview"
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/91.0.4472.124 Safari/537.36"
+                )
             }
             response = requests.get(url, headers=headers, timeout=10)
 
