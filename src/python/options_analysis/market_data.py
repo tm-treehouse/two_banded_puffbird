@@ -178,9 +178,9 @@ class YahooFinanceProvider(MarketDataProvider):
                 return yield_10y
 
             # Fall back to alternative sources when Treasury website parsing fails
-            yield_10y = self._get_wsj_yield()
+            yield_10y = self._get_cnbc_yield()
             if yield_10y is not None:
-                logger.info(f"Current 10y Treasury yield from WSJ: {yield_10y}")
+                logger.info(f"Current 10y Treasury yield from CNBC: {yield_10y}")
                 return yield_10y
 
             # If all sources fail, use the default value
@@ -192,15 +192,15 @@ class YahooFinanceProvider(MarketDataProvider):
             logger.warning("Using default risk-free rate of 0.045 (4.5%)")
             return 0.045  # Default fallback
 
-    def _get_wsj_yield(self) -> float:
+    def _get_cnbc_yield(self) -> float:
         """
-        Get current risk-free rate from Wall Street Journal as fallback.
+        Get current risk-free rate from CNBC as fallback.
 
         Returns:
             float or None: Current 10-year Treasury yield as a decimal, or None if unavailable
         """
         try:
-            url = "https://www.wsj.com/market-data/quotes/bond/BX/TMUBMUSD10Y?mod=md_bond_overview"
+            url = "https://www.cnbc.com/quotes/US10Y"
             headers = {
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -211,24 +211,26 @@ class YahooFinanceProvider(MarketDataProvider):
             response = requests.get(url, headers=headers, timeout=10)
 
             if response.status_code == 200 and "text/html" in response.headers.get("Content-Type", ""):
-                # Using simple string search for the yield value
-                start_marker = '"last_price":"'
-                end_marker = '"'
+                # Using simple string search for the yield value in CNBC format
+                start_markers = ['"last":"', '"price":"']
 
-                if start_marker in response.text:
-                    start = response.text.find(start_marker) + len(start_marker)
-                    end = response.text.find(end_marker, start)
+                for start_marker in start_markers:
+                    if start_marker in response.text:
+                        start = response.text.find(start_marker) + len(start_marker)
+                        end = response.text.find('"', start)
 
-                    if start > 0 and end > start:
-                        value_str = response.text[start:end]
-                        logger.info(f"WSJ 10-year yield value: {value_str}")
-                        return float(value_str) / 100  # Convert percentage to decimal
+                        if start > 0 and end > start:
+                            value_str = response.text[start:end]
+                            # Remove the percentage sign if present
+                            value_str = value_str.replace("%", "")
+                            logger.info(f"CNBC 10-year yield value: {value_str}%")
+                            return float(value_str) / 100  # Convert percentage to decimal
 
-            logger.warning("Could not extract 10-year yield from WSJ")
+            logger.warning("Could not extract 10-year yield from CNBC")
             return None
 
         except Exception as e:
-            logger.error(f"Error in WSJ yield extraction: {str(e)}")
+            logger.error(f"Error in CNBC yield extraction: {str(e)}")
             return None
 
     def get_available_expiration_dates(self, ticker: str) -> List[str]:

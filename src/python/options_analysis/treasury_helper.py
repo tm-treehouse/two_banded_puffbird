@@ -36,7 +36,7 @@ def get_treasury_yield() -> float:
             return None
 
         # Define reasonable yield range for validation (in percent)
-        min_yield, max_yield = 3.0, 6.0
+        min_yield, max_yield = 2.0, 10.0
 
         # Try to parse XML data properly to extract the most recent values
         try:
@@ -186,9 +186,9 @@ def get_treasury_yield_regex(content_str: str, min_yield: float = 3.0, max_yield
         logger.warning(
             "Could not extract valid 10-year yield from Treasury website, using current known rate"
         )
-        known_rate = 0.0452  # 4.52% as of May 10, 2025
+        known_rate = 0.0437  # 4.37% as of May 10, 2025
         return known_rate
 
     except Exception as e:
         logger.error(f"Error in regex Treasury yield extraction: {str(e)}")
-        return 0.045  # Default fallback
+        return 0.0437  # Default fallback
