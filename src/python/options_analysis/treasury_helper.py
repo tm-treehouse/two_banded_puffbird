@@ -33,6 +33,11 @@ def get_treasury_yield() -> float:
         response = requests.get(url, timeout=30)  # Reduced timeout for faster failures
         if response.status_code != 200:
             logger.warning(f"Treasury API returned status code: {response.status_code}")
+            # Try the CNBC fallback before giving up
+            logger.info("Trying CNBC as fallback for Treasury yield")
+            cnbc_yield = get_cnbc_yield()
+            if cnbc_yield is not None:
+                return cnbc_yield
             return None
 
         # Define reasonable yield range for validation (in percent)
@@ -103,10 +108,67 @@ def get_treasury_yield() -> float:
             logger.warning(f"XML parsing error: {e}")
 
         # Fall back to regex-based approach if XML parsing failed
-        return get_treasury_yield_regex(response.text, min_yield, max_yield)
+        yield_value = get_treasury_yield_regex(response.text, min_yield, max_yield)
+
+        # If regex approach failed, try CNBC
+        if yield_value is None:
+            logger.info("Trying CNBC as fallback for Treasury yield")
+            cnbc_yield = get_cnbc_yield()
+            if cnbc_yield is not None:
+                return cnbc_yield
+
+        return yield_value
 
     except Exception as e:
         logger.error(f"Error in Treasury yield extraction: {str(e)}")
+        # Try CNBC as a fallback
+        logger.info("Trying CNBC as fallback for Treasury yield after error")
+        cnbc_yield = get_cnbc_yield()
+        if cnbc_yield is not None:
+            return cnbc_yield
+        return None
+
+
+def get_cnbc_yield() -> float:
+    """
+    Get current risk-free rate from CNBC as fallback.
+
+    Returns:
+        float or None: Current 10-year Treasury yield as a decimal, or None if unavailable
+    """
+    try:
+        url = "https://www.cnbc.com/quotes/US10Y"
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/91.0.4472.124 Safari/537.36"
+            )
+        }
+        logger.info(f"Requesting CNBC data from: {url}")
+        response = requests.get(url, headers=headers, timeout=10)
+
+        if response.status_code == 200 and "text/html" in response.headers.get("Content-Type", ""):
+            # Using simple string search for the yield value in CNBC format
+            start_markers = ['"last":"', '"price":"']
+
+            for start_marker in start_markers:
+                if start_marker in response.text:
+                    start = response.text.find(start_marker) + len(start_marker)
+                    end = response.text.find('"', start)
+
+                    if start > 0 and end > start:
+                        value_str = response.text[start:end]
+                        # Remove the percentage sign if present
+                        value_str = value_str.replace("%", "")
+                        logger.info(f"CNBC 10-year yield value: {value_str}%")
+                        return float(value_str) / 100  # Convert percentage to decimal
+
+        logger.warning("Could not extract 10-year yield from CNBC")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error in CNBC yield extraction: {str(e)}")
         return None
 
 
@@ -181,10 +243,16 @@ def get_treasury_yield_regex(content_str: str, min_yield: float = 3.0, max_yield
             logger.info(f"Found number in typical yield range: {value}")
             return value / 100  # Convert percentage to decimal
 
-        # If no reasonable value found, hardcode today's known rate
+        # Try CNBC as a fallback before using hardcoded value
+        logger.info("Trying CNBC as fallback for Treasury yield after regex extraction failed")
+        cnbc_yield = get_cnbc_yield()
+        if cnbc_yield is not None:
+            return cnbc_yield
+
+        # If no reasonable value found and CNBC also failed, hardcode today's known rate
         # This is better than returning None when we know current rates
         logger.warning(
-            "Could not extract valid 10-year yield from Treasury website, using current known rate"
+            "Could not extract valid 10-year yield from Treasury website or CNBC, using current known rate"
         )
         known_rate = 0.0437  # 4.37% as of May 10, 2025
         return known_rate
