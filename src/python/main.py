@@ -64,7 +64,7 @@ from options_analysis.utils import ensure_output_directory, setup_logging
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Options Analysis Tool")
+    parser = argparse.ArgumentParser(description="Options Analysis Tool", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(
         "--tickers",
