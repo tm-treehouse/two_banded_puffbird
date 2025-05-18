@@ -48,6 +48,7 @@ class OptionAnalyzer:
         self.min_delta_threshold = 0.30
         self.min_projected_return_pct = 2
         self.min_annual_return_pct = 30
+        self.num_results = 25
 
     def set_analysis_parameters(
         self,
@@ -57,6 +58,7 @@ class OptionAnalyzer:
         min_delta_threshold: float = None,
         min_projected_return_pct: float = None,
         min_annual_return_pct: float = None,
+        num_results: int = None,
     ):
         """
         Set analysis parameters for filtering options
@@ -68,6 +70,7 @@ class OptionAnalyzer:
             min_delta_threshold (float): Minimum absolute delta value
             min_projected_return_pct (float): Minimum return on capital percentage
             min_annual_return_pct (float): Minimum annualized return percentage
+            num_results (int): Number of results to print to CSV
         """
         if percentage_range is not None:
             self.percentage_range = percentage_range
@@ -81,6 +84,8 @@ class OptionAnalyzer:
             self.min_projected_return_pct = min_projected_return_pct
         if min_annual_return_pct is not None:
             self.min_annual_return_pct = min_annual_return_pct
+        if num_results is not None:
+            self.num_results = num_results
 
     def process_option_chain(
         self, ticker: str, current_price: float, exp_date: str, risk_free_rate: float, today: dt.datetime
@@ -480,7 +485,10 @@ class OptionAnalyzer:
             return pd.DataFrame()
 
         scored_df = self.assign_composite_score(filtered_df)
-        top_results = scored_df.sort_values(by="composite_score", ascending=False).head(100)
+        if self.num_results == -1 :
+          top_results = scored_df.sort_values(by="composite_score", ascending=False)
+        else :
+          top_results = scored_df.sort_values(by="composite_score", ascending=False).head(self.num_results)
 
         output_file = self.out_dir / filename
         top_results.to_csv(output_file, index=False)
