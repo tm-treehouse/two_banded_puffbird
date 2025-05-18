@@ -43,6 +43,7 @@ Parameters:
   --min-return: Minimum return on capital percentage (default: 2)
   --min-annual-return: Minimum annualized return percentage (default: 30)
   --min-risk-score: Minimum risk-adjusted score (default: 0.04)
+  --num_results: Number of results to print to CSV (default: 25)
   --log-level: Logging level (default: INFO)
 
 ----------------------------------------------------
@@ -64,7 +65,7 @@ from options_analysis.utils import ensure_output_directory, setup_logging
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Options Analysis Tool")
+    parser = argparse.ArgumentParser(description="Options Analysis Tool", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(
         "--tickers",
@@ -95,6 +96,8 @@ def parse_args():
     )
 
     parser.add_argument("--min-risk-score", help="Minimum risk-adjusted score", type=float, default=0.04)
+
+    parser.add_argument("--num-results", help="Number of results to print to csv. -1 means all", type=int, default=25)
 
     parser.add_argument(
         "--log-level",
@@ -141,6 +144,7 @@ def main():
         min_delta_threshold=args.min_delta,
         min_projected_return_pct=args.min_return,
         min_annual_return_pct=args.min_annual_return,
+        num_results = args.num_results
     )
 
     # Create runner

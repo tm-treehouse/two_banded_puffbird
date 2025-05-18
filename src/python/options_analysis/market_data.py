@@ -89,6 +89,19 @@ class MarketDataProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_next_earnings_date(self, ticker: str) -> str:
+        """
+        Returns the next earnings date for a given stock ticker.
+
+        Parameters:
+            ticker (str): The stock ticker symbol (e.g., 'AAPL', 'GOOGL')
+
+        Returns:
+            datetime or None: The next earnings date, or None if unavailable.
+        """
+        pass
+
 
 class YahooFinanceProvider(MarketDataProvider):
     """
@@ -245,3 +258,32 @@ class YahooFinanceProvider(MarketDataProvider):
         tickers_df[["ticker"]].to_csv(filepath, index=False)
 
         return tickers_df["ticker"].tolist()
+
+    def get_next_earnings_date(self, ticker: str) -> str:
+        """
+        Returns the next earnings date for a given stock ticker.
+
+        Parameters:
+            ticker (str): The stock ticker symbol (e.g., 'AAPL', 'GOOGL')
+
+        Returns:
+            datetime or None: The next earnings date, or None if unavailable.
+        """
+        try:
+            stock = yf.Ticker(ticker)
+
+            cal = stock.calendar
+
+            # Earnings Date can sometimes be a date range
+            earnings_date = cal['Earnings Date']
+
+            earnings_date_str = earnings_date[0].strftime("%Y-%m-%d")
+
+            logger.debug(
+                f"Earnings date for {ticker}: {earnings_date_str}"
+            )
+            #Return the date in ISO Format
+            return earnings_date_str
+        except Exception as e:
+            print(f"Error fetching earnings date for {ticker}: {e}")
+            return None

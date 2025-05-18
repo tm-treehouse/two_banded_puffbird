@@ -48,6 +48,7 @@ class OptionAnalyzer:
         self.min_delta_threshold = 0.30
         self.min_projected_return_pct = 2
         self.min_annual_return_pct = 30
+        self.num_results = 25
 
     def set_analysis_parameters(
         self,
@@ -57,6 +58,7 @@ class OptionAnalyzer:
         min_delta_threshold: float = None,
         min_projected_return_pct: float = None,
         min_annual_return_pct: float = None,
+        num_results: int = None,
     ):
         """
         Set analysis parameters for filtering options
@@ -68,6 +70,7 @@ class OptionAnalyzer:
             min_delta_threshold (float): Minimum absolute delta value
             min_projected_return_pct (float): Minimum return on capital percentage
             min_annual_return_pct (float): Minimum annualized return percentage
+            num_results (int): Number of results to print to CSV
         """
         if percentage_range is not None:
             self.percentage_range = percentage_range
@@ -81,6 +84,8 @@ class OptionAnalyzer:
             self.min_projected_return_pct = min_projected_return_pct
         if min_annual_return_pct is not None:
             self.min_annual_return_pct = min_annual_return_pct
+        if num_results is not None:
+            self.num_results = num_results
 
     def process_option_chain(
         self, ticker: str, current_price: float, exp_date: str, risk_free_rate: float, today: dt.datetime
@@ -480,7 +485,10 @@ class OptionAnalyzer:
             return pd.DataFrame()
 
         scored_df = self.assign_composite_score(filtered_df)
-        top_results = scored_df.sort_values(by="composite_score", ascending=False).head(top_n)
+        if self.num_results == -1 :
+          top_results = scored_df.sort_values(by="composite_score", ascending=False)
+        else :
+          top_results = scored_df.sort_values(by="composite_score", ascending=False).head(self.num_results)
 
         output_file = self.out_dir / filename
         top_results.to_csv(output_file, index=False)
@@ -688,6 +696,7 @@ class OptionsAnalysisRunner:
                 logger.error(f"Failed to get option dates for {ticker}: {str(e)}")
                 return put_data, call_data
 
+
             # Limit to a few near-term expirations
             available_exp_count = len(expiration_dates)
             if available_exp_count >= 4:
@@ -697,12 +706,33 @@ class OptionsAnalysisRunner:
                 # Take all but the first (shortest-term)
                 expiration_dates = expiration_dates[1:]
 
+
+
+            # Get the earnings date of the ticker.
+            earnings_date = self.market_data.get_next_earnings_date(ticker)
+
+            logger.info(
+                f"Earnings date for {ticker} is {earnings_date}"
+            )
+
+            # Remove Options that occur after the earnings date
+            filtered_expiration_dates = [
+                date for date in expiration_dates if date < earnings_date
+            ]
+
+            num_removed_dates = len(earnings_date) - len(filtered_expiration_dates)
+
+            logger.info(
+                f"Purging {num_removed_dates} options from {ticker}"
+            )
+
+
             logger.debug(f"{ticker} using expiration dates: {expiration_dates}")
 
             # Track how many expiration dates were processed
             processed_exp_count = 0
 
-            for exp_date in expiration_dates:
+            for exp_date in filtered_expiration_dates :
                 # Process option chain for this expiration date
                 put_chains, call_chains = self.analyzer.process_option_chain(
                     ticker, current_price, exp_date, risk_free_rate, today
@@ -718,7 +748,7 @@ class OptionsAnalysisRunner:
 
             # Log summary for this ticker
             logger.info(
-                f"{ticker} summary: processed {processed_exp_count}/{len(expiration_dates)} expirations, collected {len(put_data)} put chains and {len(call_data)} call chains"
+                f"{ticker} summary: processed {processed_exp_count}/{len(filtered_expiration_dates)} expirations, collected {len(put_data)} put chains and {len(call_data)} call chains"
             )
 
         except Exception as e:
