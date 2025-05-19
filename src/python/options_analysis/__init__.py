@@ -7,7 +7,7 @@ from .market_data import MarketDataProvider, YahooFinanceProvider
 from .models import OptionContract, OptionType
 from .option_analysis import OptionAnalyzer, OptionsAnalysisRunner
 from .utils import setup_logging
-
+from .american_option_simulator import AmericanOptionSimulator
 __all__ = [
     "MarketDataProvider",
     "YahooFinanceProvider",
@@ -17,4 +17,5 @@ __all__ = [
     "OptionContract",
     "BlackScholesCalculator",
     "setup_logging",
+    "AmericanOptionSimulator",
 ]
