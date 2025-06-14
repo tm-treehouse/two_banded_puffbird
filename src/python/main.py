@@ -82,17 +82,17 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--percentage-range", help="Price range percentage from current price", type=float, default=15
+        "--percentage-range", help="Price range percentage from current price", type=float, default=20
     )
 
-    parser.add_argument("--min-delta", help="Minimum absolute delta threshold", type=float, default=0.30)
+    parser.add_argument("--min-delta", help="Minimum absolute delta threshold", type=float, default=0.1)
 
     parser.add_argument("--max-delta", help="Maximum absolute delta threshold", type=float, default=0.75)
 
-    parser.add_argument("--min-return", help="Minimum return on capital percentage", type=float, default=2)
+    parser.add_argument("--min-return", help="Minimum return on capital percentage", type=float, default=1)
 
     parser.add_argument(
-        "--min-annual-return", help="Minimum annualized return percentage", type=float, default=30
+        "--min-annual-return", help="Minimum annualized return percentage", type=float, default=20
     )
 
     parser.add_argument("--min-risk-score", help="Minimum risk-adjusted score", type=float, default=0.04)
