@@ -40,7 +40,7 @@ class option_simulator:
         self.T_days = np.busday_count(datetime.today().date(), self.expiry.date())
         self.T = self.T_days / 252  # Time to maturity in years (assumes 252 trading days per year)
         self.dt = 1 / 252  # Daily step for simulation
-        paths = self.geometric_brownian_motion(self.current_stock_price,self.historical_returns_mean,self.historical_returns_std_deviation,1,252,1)
+        paths = self.geometric_brownian_motion(self.current_stock_price,self.historical_returns_mean,self.historical_returns_std_deviation,1,252,2)
         paths = paths.flatten()
         plt.plot(paths)
         plt.savefig('random_walks.png')
@@ -66,10 +66,12 @@ class option_simulator:
     #Aka std devitaion
 
     def _calculate_sigma(self):
-        #data_set = self.prices
-        data_set = []
-        for i in range(1, len(self.prices)):
-            data_set.append(self.prices[i] - self.prices[i-1])
+        self.prices = self.prices.reshape(1,-1)
+        self.prices = self.prices.flatten()
+
+        data_set = pd.Series(self.prices)
+        data_set = data_set.pct_change(1).dropna()
+        print(data_set)
 
         # Calculate mean
         self.historical_returns_mean = np.mean(data_set)
@@ -96,6 +98,6 @@ class option_simulator:
         paths = np.zeros((N + 1, num_simulations))
         paths[0] = S0
         for t in range(1, N + 1):
-            rand = np.random.standard_normal(num_simulations)
-            paths[t] = paths[t - 1] * np.exp((mu - 0.5 * sigma ** 2) * dt + sigma * np.sqrt(dt) * rand)
+            rand = np.random.normal(0,1,num_simulations)
+            paths[t] = paths[t - 1] * np.exp((mu - (0.5 * sigma ** 2)) * dt + sigma * np.sqrt(dt) * rand)
         return paths
