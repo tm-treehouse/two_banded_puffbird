@@ -40,7 +40,7 @@ class option_simulator:
         self.T_days = np.busday_count(datetime.today().date(), self.expiry.date())
         self.T = self.T_days / 252  # Time to maturity in years (assumes 252 trading days per year)
         self.dt = 1 / 252  # Daily step for simulation
-        paths = self.geometric_brownian_motion(self.current_stock_price,self.historical_returns_mean,self.historical_returns_std_deviation,1,252,2)
+        paths = self.geometric_brownian_motion(self.current_stock_price,self.historical_returns_mean,self.historical_returns_std_deviation,1,252,1)
         paths = paths.flatten()
         plt.plot(paths)
         plt.savefig('random_walks.png')
