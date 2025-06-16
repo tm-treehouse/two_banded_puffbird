@@ -9,44 +9,24 @@ from matplotlib.backends.backend_pdf import PdfPages
 import json
 
 class option_simulator:
-    def __init__(self, ticker, option_type, side, strike, expiry, risk_free_rate=0.05, n_jobs=-1):
-        """
-        Initialize the simulator with option parameters.
+    def __init__(self, ticker, n_jobs=-1):
 
-        Args:
-            ticker (str): Stock ticker symbol.
-            option_type (str): 'call' or 'put'.
-            side (str): 'buy' or 'sell'.
-            strike (float): Option strike price.
-            expiry (str): Expiration date in YYYY-MM-DD.
-            risk_free_rate (float): Annualized risk-free rate.
-            n_jobs (int): Number of CPU cores to use for parallel processing.
-                          Use -1 to use all available cores.
-        """
         # Store initial parameters
         self.ticker = ticker.upper()
-        self.option_type = option_type.lower()
-        self.side = side.lower()
-        self.strike_price = strike
-        self.expiry = pd.to_datetime(expiry)
-        self.risk_free_rate = risk_free_rate
         self.n_jobs = n_jobs  # Number of jobs for parallel processing
 
         # Get historical stock data and calibrate volatility
-        self._fetch_data()
+        self._fetch_stock_close_data(ticker)
         self._calculate_sigma()
 
         # Calculate time to maturity in trading days and years
-        self.T_days = np.busday_count(datetime.today().date(), self.expiry.date())
-        self.T = self.T_days / 252  # Time to maturity in years (assumes 252 trading days per year)
-        self.dt = 1 / 252  # Daily step for simulation
-        paths = self.geometric_brownian_motion(self.current_stock_price,self.historical_returns_mean,self.historical_returns_std_deviation,1,252,2)
+        paths = self.geometric_brownian_motion(self.current_stock_price,self.historical_returns_mean,self.historical_returns_std_deviation,1,252,1000)
         paths = paths.T
         for rows in paths:
             plt.plot(rows)
         plt.savefig('random_walks.png')
 
-    def _fetch_data(self):
+    def _fetch_stock_close_data(self,ticker):
         """Download and store historical stock prices."""
         # Fetch adjusted closing prices from Yahoo Finance
         data = yf.download(self.ticker, period="6mo", progress=False)
@@ -54,10 +34,14 @@ class option_simulator:
 
         #Get closing price, convert to list
         close_price = df['Close']
-        price_series = close_price["MSFT"]
+        price_series = close_price[ticker]
         price_series_list = price_series.tolist()
         price_data_frame = pd.DataFrame(price_series.tolist())
+        print(price_data_frame.size)
         self.prices = price_data_frame.to_numpy()
+        self.prices = self.prices.reshape(1,-1)
+        self.prices = self.prices.flatten()
+        self.prices = pd.Series(self.prices)
         self.current_stock_price = price_series_list[-1]  # Current stock price
 
 
@@ -66,11 +50,8 @@ class option_simulator:
     #Aka std devitaion
 
     def _calculate_sigma(self):
-        self.prices = self.prices.reshape(1,-1)
-        self.prices = self.prices.flatten()
 
-        data_set = pd.Series(self.prices)
-        data_set = data_set.pct_change(1).dropna()
+        data_set = self.prices.pct_change(1).dropna()
 
         # Calculate mean
         self.historical_returns_mean = np.mean(data_set)

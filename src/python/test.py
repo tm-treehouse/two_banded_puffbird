@@ -4,12 +4,7 @@ from options_analysis.option_simulator import option_simulator
 
 # Create an instance of the AmericanOptionSimulator for a Sell Put Option
 simulator = option_simulator(
-    ticker="MSFT",             # Stock ticker
-    option_type="put",         # Option type: "call" or "put"
-    side="sell",               # Side: "buy" or "sell"
-    strike=112,                # Option strike price
-    expiry="2025-06-22",       # Expiry date in "YYYY-MM-DD"
-    risk_free_rate=0.03,       # Risk-free rate (default 3%)
+    ticker="SPEU",             # Stock ticker
     n_jobs=4                   # Number of CPU cores for parallel processing
 )
 
