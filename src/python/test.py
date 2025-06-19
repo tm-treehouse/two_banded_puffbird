@@ -4,7 +4,7 @@ from options_analysis.option_simulator import option_simulator
 
 # Create an instance of the AmericanOptionSimulator for a Sell Put Option
 simulator = option_simulator(
-    ticker="SPEU",             # Stock ticker
+    ticker="INTC",             # Stock ticker
     n_jobs=4                   # Number of CPU cores for parallel processing
 )
 
