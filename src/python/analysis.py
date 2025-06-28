@@ -36,6 +36,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Import from refactored package
+from options_analysis.blacklist import BlacklistManager
 from options_analysis.market_data import YahooFinanceProvider
 from options_analysis.option_analysis import OptionAnalyzer, OptionsAnalysisRunner
 from options_analysis.utils import ensure_output_directory, setup_logging
@@ -53,6 +54,9 @@ def main():
     # Create output directory
     out_dir = ensure_output_directory()
 
+    # Initialize blacklist manager with default file
+    blacklist_manager = BlacklistManager(blacklist_file="blacklist.csv", out_dir=out_dir)
+
     # Create market data provider
     market_data = YahooFinanceProvider(out_dir=out_dir)
 
@@ -66,8 +70,18 @@ def main():
     tickers = market_data.get_sp500_tickers()
     logger.info(f"Analyzing {len(tickers)} S&P 500 tickers")
 
+    # Apply blacklist filtering
+    original_ticker_count = len(tickers)
+    tickers = blacklist_manager.filter_tickers(tickers)
+    
+    if len(tickers) != original_ticker_count:
+        logger.info(f"After blacklist filtering: {len(tickers)} tickers remaining")
+
     # Run the analysis with default parameters (3 workers)
     results = runner.run_analysis(tickers=tickers)
+
+    # Generate blacklist report
+    blacklist_manager.generate_blacklist_report()
 
     # Summary of results
     if "puts" in results and not results["puts"].empty:

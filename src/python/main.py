@@ -36,6 +36,7 @@ Usage Examples:
 Parameters:
   --tickers: Comma-separated list of ticker symbols (default: S&P 500)
   --refresh-tickers: Force refresh of S&P 500 tickers from web
+  --blacklist-file: Path to CSV file with tickers to exclude (default: blacklist.csv)
   --max-workers: Number of parallel threads (default: 3)
   --percentage-range: Price range percentage from current price (default: 15)
   --min-delta: Minimum absolute delta threshold (default: 0.30)
@@ -56,6 +57,7 @@ uv run src/python/main.py [options]
 import argparse
 import logging
 
+from options_analysis.blacklist import BlacklistManager
 from options_analysis.market_data import YahooFinanceProvider
 from options_analysis.option_analysis import OptionAnalyzer, OptionsAnalysisRunner
 
@@ -65,7 +67,10 @@ from options_analysis.utils import ensure_output_directory, setup_logging
 
 def parse_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Options Analysis Tool", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description="Options Analysis Tool",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
 
     parser.add_argument(
         "--tickers",
@@ -75,6 +80,13 @@ def parse_args():
 
     parser.add_argument(
         "--refresh-tickers", help="Force refresh of S&P 500 tickers from web", action="store_true"
+    )
+
+    parser.add_argument(
+        "--blacklist-file",
+        help="Path to blacklist CSV file containing tickers to exclude from analysis",
+        type=str,
+        default="blacklist.csv",
     )
 
     parser.add_argument(
@@ -97,7 +109,9 @@ def parse_args():
 
     parser.add_argument("--min-risk-score", help="Minimum risk-adjusted score", type=float, default=0.04)
 
-    parser.add_argument("--num-results", help="Number of results to print to csv. -1 means all", type=int, default=25)
+    parser.add_argument(
+        "--num-results", help="Number of results to print to csv. -1 means all", type=int, default=25
+    )
 
     parser.add_argument(
         "--log-level",
@@ -132,6 +146,9 @@ def main():
     # Create output directory
     out_dir = ensure_output_directory()
 
+    # Initialize blacklist manager
+    blacklist_manager = BlacklistManager(blacklist_file=args.blacklist_file, out_dir=out_dir)
+
     # Create market data provider
     market_data = YahooFinanceProvider(out_dir=out_dir)
 
@@ -144,7 +161,7 @@ def main():
         min_delta_threshold=args.min_delta,
         min_projected_return_pct=args.min_return,
         min_annual_return_pct=args.min_annual_return,
-        num_results = args.num_results
+        num_results=args.num_results
     )
 
     # Create runner
@@ -159,8 +176,18 @@ def main():
         tickers = market_data.get_sp500_tickers(refresh=args.refresh_tickers)
         logger.info(f"Analyzing {len(tickers)} S&P 500 tickers")
 
+    # Apply blacklist filtering
+    original_ticker_count = len(tickers)
+    tickers = blacklist_manager.filter_tickers(tickers)
+    
+    if len(tickers) != original_ticker_count:
+        logger.info(f"After blacklist filtering: {len(tickers)} tickers remaining")
+
     # Run the analysis
     results = runner.run_analysis(tickers=tickers, max_workers=args.max_workers)
+
+    # Generate blacklist report
+    blacklist_manager.generate_blacklist_report()
 
     # Summary of results
     if "puts" in results and not results["puts"].empty:

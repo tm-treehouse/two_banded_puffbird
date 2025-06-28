@@ -3,6 +3,7 @@ Options Analysis package for financial options calculations and analysis.
 """
 
 from .black_scholes import BlackScholesCalculator
+from .blacklist import BlacklistManager
 from .market_data import MarketDataProvider, YahooFinanceProvider
 from .models import OptionContract, OptionType
 from .option_analysis import OptionAnalyzer, OptionsAnalysisRunner
@@ -16,5 +17,6 @@ __all__ = [
     "OptionType",
     "OptionContract",
     "BlackScholesCalculator",
+    "BlacklistManager",
     "setup_logging",
 ]

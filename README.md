@@ -6,10 +6,12 @@ Financial options analysis tool that calculates risk-adjusted returns for put an
 
 - Fetches stock prices, treasury yields, and option chains
 - Applies Black-Scholes modeling for option analysis
+- **Blacklist support** - Exclude unwanted tickers from analysis
 - Runs automatically via GitHub Actions
 - Generates CSV reports with analysis results
 - Object-oriented design with clean separation of concerns
 - Support for both put and call option analysis
+- Comprehensive logging and error handling
 
 ## Project Structure
 
@@ -23,6 +25,7 @@ src/python/
 └── options_analysis/         # Main package
     ├── __init__.py           # Package exports
     ├── black_scholes.py      # Black-Scholes model implementation
+    ├── blacklist.py          # Ticker blacklist management
     ├── market_data.py        # Data providers (Yahoo Finance, etc.)
     ├── models.py             # Data models for options
     ├── option_analysis.py    # Option analysis logic
@@ -43,12 +46,34 @@ uv run src/python/main.py --tickers AAPL,MSFT,GOOGL
 
 # Run with custom parameters
 uv run src/python/main.py --max-workers 4 --percentage-range 20 --min-delta 0.35
+
+# Use blacklist to exclude specific tickers using custom blacklist file/file location (default is project root dir.)
+uv run src/python/main.py --blacklist-file my_blacklist.csv
 ```
 
 For backward compatibility, you can still use the old entry point:
 ```bash
 uv run src/python/analysis.py
 ```
+
+### Blacklist Feature
+
+The tool supports excluding specific tickers from analysis using a blacklist CSV file:
+
+```bash
+# Create a blacklist.csv file (default location)
+echo "ticker,reason" > blacklist.csv
+echo "TSLA,High volatility around earnings" >> blacklist.csv
+echo "GME,Meme stock - unpredictable pricing" >> blacklist.csv
+
+# Run analysis with blacklist (automatic)
+uv run src/python/main.py
+
+# Use custom blacklist file
+uv run src/python/main.py --blacklist-file custom_blacklist.csv
+```
+
+See [`BLACKLIST_USAGE.md`](BLACKLIST_USAGE.md) for detailed documentation.
 
 ## Development
 
